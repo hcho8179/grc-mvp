@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Knowledge Base — GRC MVP{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Knowledge Base</h1>
+  <a href="/knowledge/upload"
+     class="bg-blue-600 text-white text-sm px-4 py-2 rounded hover:bg-blue-700">
+    Upload Document
+  </a>
+</div>
+
+{% if documents %}
+<div class="bg-white border border-gray-200 rounded overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-gray-200 bg-gray-50 text-left">
+        <th class="px-4 py-3 font-medium text-gray-700">Filename</th>
+        <th class="px-4 py-3 font-medium text-gray-700">Type</th>
+        <th class="px-4 py-3 font-medium text-gray-700">Chunks</th>
+        <th class="px-4 py-3 font-medium text-gray-700">Uploaded</th>
+        <th class="px-4 py-3"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in documents %}
+      <tr class="border-b border-gray-100 hover:bg-gray-50">
+        <td class="px-4 py-3 text-gray-900">{{ doc.filename }}</td>
+        <td class="px-4 py-3 text-gray-500 uppercase tracking-wide text-xs">{{ doc.file_type.value }}</td>
+        <td class="px-4 py-3 text-gray-700">{{ doc.chunk_count }}</td>
+        <td class="px-4 py-3 text-gray-500">{{ doc.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="px-4 py-3 text-right">
+          <form method="post" action="/knowledge/{{ doc.id }}/delete"
+                onsubmit="return confirm('Delete {{ doc.filename }} and all its chunks?')">
+            <button type="submit"
+                    class="text-red-600 hover:text-red-800 text-xs font-medium">
+              Delete
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="text-xs text-gray-400 mt-3">
+  {{ documents | length }} document{{ 's' if documents | length != 1 else '' }} &middot;
+  {{ documents | sum(attribute='chunk_count') }} total chunks
+</p>
+
+{% else %}
+<div class="bg-white border border-gray-200 rounded p-12 text-center">
+  <p class="text-gray-500 mb-3">No documents in the knowledge base yet.</p>
+  <a href="/knowledge/upload" class="text-blue-600 hover:underline text-sm">
+    Upload your first document
+  </a>
+</div>
+{% endif %}
+
+{% endblock %}

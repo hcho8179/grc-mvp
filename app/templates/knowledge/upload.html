@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Upload Document — GRC MVP{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/knowledge" class="text-sm text-gray-500 hover:text-gray-700">&larr; Knowledge Base</a>
+</div>
+
+<h1 class="text-2xl font-bold mb-6">Upload Document</h1>
+
+{% if error %}
+<div class="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded mb-4">
+  {{ error }}
+</div>
+{% endif %}
+
+<div class="bg-white border border-gray-200 rounded p-6 max-w-lg">
+  <form method="post" action="/knowledge/upload" enctype="multipart/form-data" class="space-y-5">
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">File</label>
+      <input type="file" name="file" accept=".pdf,.docx,.xlsx" required
+             class="block w-full text-sm text-gray-700
+                    file:mr-3 file:py-2 file:px-4 file:rounded
+                    file:border-0 file:text-sm file:font-medium
+                    file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100 cursor-pointer">
+      <p class="text-xs text-gray-400 mt-1">
+        PDF or DOCX — parsed and chunked automatically.<br>
+        XLSX — you'll choose which columns are questions and answers.
+      </p>
+    </div>
+
+    <button type="submit"
+            class="bg-blue-600 text-white text-sm px-5 py-2 rounded hover:bg-blue-700 font-medium">
+      Upload
+    </button>
+  </form>
+</div>
+
+{% endblock %}

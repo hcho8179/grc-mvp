@@ -12,10 +12,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     voyage_api_key: str = ""
 
-    embedding_provider: str = "openai"
-    embedding_model: str = "text-embedding-3-small"
+    embedding_provider: str = "voyage"
+    embedding_model: str = "voyage-3"
 
-    database_url: str = "postgresql://grc:grc_secret@localhost:5432/grc_db"
+    database_url: str = "postgresql://grc:grc_secret@localhost:5434/grc_db"
     claude_model: str = "claude-sonnet-4-5"
 
     class Config:

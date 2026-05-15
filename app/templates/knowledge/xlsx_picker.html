@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Map Columns — GRC MVP{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/knowledge/upload" class="text-sm text-gray-500 hover:text-gray-700">&larr; Upload</a>
+</div>
+
+<h1 class="text-2xl font-bold mb-1">Map Columns</h1>
+<p class="text-gray-500 text-sm mb-6">
+  File: <span class="font-medium text-gray-700">{{ filename }}</span> &mdash;
+  {{ preview.total_rows }} row{{ 's' if preview.total_rows != 1 else '' }}.
+  Choose which columns contain questions and answers.
+</p>
+
+<div class="bg-white border border-gray-200 rounded p-6 max-w-lg mb-6">
+  <form method="post" action="/knowledge/upload/xlsx/{{ temp_id }}" class="space-y-5">
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Question column</label>
+      <select name="question_col"
+              class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        {% for col in preview.columns %}
+        <option value="{{ loop.index0 }}">{{ loop.index0 }} — {{ col }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Answer column</label>
+      <select name="answer_col"
+              class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        {% for col in preview.columns %}
+        <option value="{{ loop.index0 }}" {% if loop.index0 == 1 %}selected{% endif %}>
+          {{ loop.index0 }} — {{ col }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit"
+            class="bg-blue-600 text-white text-sm px-5 py-2 rounded hover:bg-blue-700 font-medium">
+      Process File
+    </button>
+  </form>
+</div>
+
+{% if preview.sample_rows %}
+<div class="bg-white border border-gray-200 rounded overflow-auto">
+  <p class="px-4 pt-3 pb-1 text-xs text-gray-400 font-medium uppercase tracking-wide">
+    Preview — first {{ preview.sample_rows | length }} rows
+  </p>
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-gray-200 bg-gray-50 text-left">
+        {% for col in preview.columns %}
+        <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">{{ col }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in preview.sample_rows %}
+      <tr class="border-b border-gray-100 hover:bg-gray-50">
+        {% for cell in row %}
+        <td class="px-4 py-2 text-gray-700 max-w-xs truncate" title="{{ cell }}">{{ cell }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
