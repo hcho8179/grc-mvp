@@ -1,0 +1,55 @@
+[project]
+name = "grc-mvp"
+version = "0.1.0"
+description = "AI-powered security questionnaire automation for SMB SaaS companies"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "python-multipart>=0.0.9",
+    "jinja2>=3.1.4",
+
+    # Database
+    "sqlalchemy>=2.0.30",
+    "psycopg2-binary>=2.9.9",
+    "pgvector>=0.3.2",
+    "alembic>=1.13.1",
+
+    # File parsing
+    "openpyxl>=3.1.2",
+    "pypdf>=4.2.0",
+    "python-docx>=1.1.2",
+
+    # AI / Embeddings
+    "anthropic>=0.28.0",
+    "openai>=1.30.0",        # for text-embedding-3-small
+    "google-genai>=1.10.0",  # Gemini provider
+    "voyageai>=0.2",
+
+    # Config
+    "python-dotenv>=1.0.1",
+    "pydantic-settings>=2.3.0",
+
+    # Utilities
+    "tiktoken>=0.7.0",       # token counting for chunking
+    "numpy>=1.26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.6",
+    "httpx>=0.27.0",         # async test client for FastAPI
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
