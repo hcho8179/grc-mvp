@@ -18,6 +18,8 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
+    LargeBinary,
     String,
     Table,
     Text,
@@ -102,10 +104,9 @@ class KnowledgeChunk(Base):
 # ---------------------------------------------------------------------------
 
 class QuestionnaireStatus(str, enum.Enum):
-    uploaded = "uploaded"       # parsed, questions stored
-    generating = "generating"   # AI generation in progress
-    in_review = "in_review"     # answers generated, awaiting review
-    exported = "exported"       # answers exported to Excel
+    draft = "draft"             # parsed, questions stored, no answers yet
+    in_progress = "in_progress" # AI generation in progress or partially reviewed
+    complete = "complete"       # all answers approved and exported
 
 
 class Questionnaire(Base):
@@ -114,16 +115,19 @@ class Questionnaire(Base):
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    filename = Column(String(512), nullable=False)
+    name = Column(String(512), nullable=False)
     customer_name = Column(String(256), nullable=True)
-    status = Column(Enum(QuestionnaireStatus), default=QuestionnaireStatus.uploaded)
+    source_filename = Column(String(512), nullable=False)
+    status = Column(Enum(QuestionnaireStatus), default=QuestionnaireStatus.draft, nullable=False)
+    question_count = Column(Integer, default=0, nullable=False)
+    raw_xlsx_blob = Column(LargeBinary, nullable=True)
 
-    # Column indices the user chose during upload (0-based)
-    question_col = Column(Integer, nullable=False)
-    answer_col = Column(Integer, nullable=False)
-    header_row = Column(Integer, default=0)
-
-    questions = relationship("Question", back_populates="questionnaire", cascade="all, delete-orphan")
+    questions = relationship(
+        "Question",
+        back_populates="questionnaire",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -134,13 +138,13 @@ class ConfidenceLevel(str, enum.Enum):
     high = "high"
     medium = "medium"
     low = "low"
-    insufficient = "insufficient"
 
 
 class QuestionStatus(str, enum.Enum):
     pending = "pending"     # no answer yet
-    draft = "draft"         # AI answer generated
-    approved = "approved"   # user approved (and saved to KB)
+    generated = "generated" # AI draft produced
+    approved = "approved"   # user approved final answer
+    rejected = "rejected"   # user rejected; needs manual answer
 
 
 class Question(Base):
@@ -149,17 +153,24 @@ class Question(Base):
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    questionnaire_id = Column(Integer, ForeignKey("questionnaires.id"), nullable=False)
+    questionnaire_id = Column(
+        Integer,
+        ForeignKey("questionnaires.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     questionnaire = relationship("Questionnaire", back_populates="questions")
 
     row_index = Column(Integer, nullable=False)  # original Excel row (0-based after header)
-    text = Column(Text, nullable=False)
+    question_text = Column(Text, nullable=False)
 
     draft_answer = Column(Text, nullable=True)
-    final_answer = Column(Text, nullable=True)   # set after user edits/approves
+    final_answer = Column(Text, nullable=True)
 
+    status = Column(Enum(QuestionStatus), default=QuestionStatus.pending, nullable=False)
     confidence = Column(Enum(ConfidenceLevel), nullable=True)
-    status = Column(Enum(QuestionStatus), default=QuestionStatus.pending)
+    cited_chunk_ids = Column(JSON, nullable=True)  # list[int] — populated by Phase 4
+    reasoning = Column(Text, nullable=True)         # LLM confidence explanation
 
     cited_chunks = relationship(
         "KnowledgeChunk",

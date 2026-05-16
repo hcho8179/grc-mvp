@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{{ questionnaire.name }} — GRC MVP{% endblock %}
+{% block content %}
+
+<div class="mb-4">
+  <a href="/questionnaires" class="text-sm text-gray-500 hover:text-gray-700">&larr; Questionnaires</a>
+</div>
+
+<div class="flex items-start justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold">{{ questionnaire.name }}</h1>
+    <p class="text-sm text-gray-500 mt-1">
+      {% if questionnaire.customer_name %}{{ questionnaire.customer_name }} &middot; {% endif %}
+      {{ questionnaire.source_filename }} &middot;
+      {{ questionnaire.question_count }} question{{ 's' if questionnaire.question_count != 1 else '' }} &middot;
+      uploaded {{ questionnaire.created_at.strftime('%Y-%m-%d') }}
+    </p>
+  </div>
+  <div class="flex items-center gap-3">
+    {# Status badge #}
+    {% if questionnaire.status.value == "draft" %}
+      <span class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
+        Draft
+      </span>
+    {% elif questionnaire.status.value == "in_progress" %}
+      <span class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+        In Progress
+      </span>
+    {% elif questionnaire.status.value == "complete" %}
+      <span class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+        Complete
+      </span>
+    {% endif %}
+
+    {# Generate button — disabled until Phase 4 #}
+    <button disabled
+            title="AI answer generation coming in Phase 4"
+            class="inline-flex items-center px-4 py-2 rounded text-sm font-medium
+                   bg-indigo-100 text-indigo-400 cursor-not-allowed">
+      Generate Answers
+    </button>
+
+    {# Delete #}
+    <form method="post" action="/questionnaires/{{ questionnaire.id }}/delete"
+          onsubmit="return confirm('Delete {{ questionnaire.name }} and all its questions?')">
+      <button type="submit" class="text-sm text-red-600 hover:text-red-800 font-medium">
+        Delete
+      </button>
+    </form>
+  </div>
+</div>
+
+{% if questions %}
+<div class="bg-white border border-gray-200 rounded overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-gray-200 bg-gray-50 text-left">
+        <th class="px-4 py-3 font-medium text-gray-700 w-12">#</th>
+        <th class="px-4 py-3 font-medium text-gray-700">Question</th>
+        <th class="px-4 py-3 font-medium text-gray-700">Status</th>
+        <th class="px-4 py-3 font-medium text-gray-700">Answer Preview</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in questions %}
+      <tr class="border-b border-gray-100 hover:bg-gray-50 align-top">
+        <td class="px-4 py-3 text-gray-400 text-xs">{{ q.row_index + 1 }}</td>
+        <td class="px-4 py-3 text-gray-800 max-w-md">{{ q.question_text }}</td>
+        <td class="px-4 py-3">
+          {% if q.status.value == "pending" %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+              Pending
+            </span>
+          {% elif q.status.value == "generated" %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+              Generated
+            </span>
+          {% elif q.status.value == "approved" %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+              Approved
+            </span>
+          {% elif q.status.value == "rejected" %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+              Rejected
+            </span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-gray-500 text-xs max-w-xs">
+          {% set answer = q.final_answer or q.draft_answer %}
+          {% if answer %}
+            <span class="line-clamp-2">{{ answer }}</span>
+          {% else %}
+            <span class="italic">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="text-xs text-gray-400 mt-3">{{ questions | length }} questions</p>
+
+{% else %}
+<div class="bg-white border border-gray-200 rounded p-8 text-center text-gray-500">
+  No questions found.
+</div>
+{% endif %}
+
+{% endblock %}

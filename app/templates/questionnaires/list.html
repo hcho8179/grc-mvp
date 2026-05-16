@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Questionnaires — GRC MVP{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Questionnaires</h1>
+  <a href="/questionnaires/upload"
+     class="bg-blue-600 text-white text-sm px-4 py-2 rounded hover:bg-blue-700">
+    Upload Questionnaire
+  </a>
+</div>
+
+{% if questionnaires %}
+<div class="bg-white border border-gray-200 rounded overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-gray-200 bg-gray-50 text-left">
+        <th class="px-4 py-3 font-medium text-gray-700">Name</th>
+        <th class="px-4 py-3 font-medium text-gray-700">Customer</th>
+        <th class="px-4 py-3 font-medium text-gray-700">Status</th>
+        <th class="px-4 py-3 font-medium text-gray-700">Questions</th>
+        <th class="px-4 py-3 font-medium text-gray-700">Uploaded</th>
+        <th class="px-4 py-3"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in questionnaires %}
+      <tr class="border-b border-gray-100 hover:bg-gray-50">
+        <td class="px-4 py-3">
+          <a href="/questionnaires/{{ q.id }}" class="text-blue-600 hover:underline font-medium">
+            {{ q.name }}
+          </a>
+          <div class="text-xs text-gray-400 mt-0.5">{{ q.source_filename }}</div>
+        </td>
+        <td class="px-4 py-3 text-gray-600">{{ q.customer_name or "—" }}</td>
+        <td class="px-4 py-3">
+          {% if q.status.value == "draft" %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+              Draft
+            </span>
+          {% elif q.status.value == "in_progress" %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+              In Progress
+            </span>
+          {% elif q.status.value == "complete" %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+              Complete
+            </span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-gray-700">{{ q.question_count }}</td>
+        <td class="px-4 py-3 text-gray-500">{{ q.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="px-4 py-3 text-right">
+          <form method="post" action="/questionnaires/{{ q.id }}/delete"
+                onsubmit="return confirm('Delete {{ q.name }} and all its questions?')">
+            <button type="submit" class="text-red-600 hover:text-red-800 text-xs font-medium">
+              Delete
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="text-xs text-gray-400 mt-3">
+  {{ questionnaires | length }} questionnaire{{ 's' if questionnaires | length != 1 else '' }}
+</p>
+
+{% else %}
+<div class="bg-white border border-gray-200 rounded p-12 text-center">
+  <p class="text-gray-500 mb-3">No questionnaires yet.</p>
+  <a href="/questionnaires/upload" class="text-blue-600 hover:underline text-sm">
+    Upload your first questionnaire
+  </a>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -95,6 +95,83 @@ def parse_xlsx_qa(file_bytes: bytes, question_col: int, answer_col: int) -> list
     return pairs
 
 
+def parse_xlsx_questionnaire_preview(file_bytes: bytes) -> dict:
+    """Return column headers, sample rows, total row count, and sheet name for the questionnaire column-picker."""
+    import openpyxl
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    except Exception as exc:
+        raise ValueError(f"Could not read XLSX: {exc}") from exc
+
+    ws = wb.active
+    sheet_name = ws.title
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+
+    if not rows:
+        return {"columns": [], "sample_rows": [], "total_rows": 0, "sheet_name": sheet_name}
+
+    columns = [
+        str(cell) if cell is not None else f"Column {i + 1}"
+        for i, cell in enumerate(rows[0])
+    ]
+    data_rows = rows[1:]
+    sample = [
+        [str(cell) if cell is not None else "" for cell in row]
+        for row in data_rows[:5]
+    ]
+    return {
+        "columns": columns,
+        "sample_rows": sample,
+        "total_rows": len(data_rows),
+        "sheet_name": sheet_name,
+    }
+
+
+def parse_xlsx_questionnaire_full(
+    file_bytes: bytes,
+    question_col: int,
+    answer_col: int | None = None,
+) -> list[dict]:
+    """Parse a blank questionnaire XLSX into structured question rows.
+
+    Returns list of {"row_index": int, "question": str, "existing_answer": str | None}.
+    row_index is 0-based relative to the first data row (after header).
+    Rows where the question cell is empty or whitespace are skipped.
+    """
+    import openpyxl
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    except Exception as exc:
+        raise ValueError(f"Could not read XLSX: {exc}") from exc
+
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+
+    if not rows:
+        return []
+
+    results: list[dict] = []
+    for idx, row in enumerate(rows[1:]):  # skip header; idx = 0-based data row index
+        if len(row) <= question_col:
+            continue
+        question = str(row[question_col]).strip() if row[question_col] is not None else ""
+        if not question:
+            continue
+        existing_answer: str | None = None
+        if answer_col is not None and len(row) > answer_col:
+            val = row[answer_col]
+            existing_answer = str(val).strip() if val is not None else None
+            if not existing_answer:
+                existing_answer = None
+        results.append({"row_index": idx, "question": question, "existing_answer": existing_answer})
+
+    return results
+
+
 def parse_file(filename: str, file_bytes: bytes) -> str:
     """Dispatch to the appropriate text parser based on file extension."""
     ext = Path(filename).suffix.lower()

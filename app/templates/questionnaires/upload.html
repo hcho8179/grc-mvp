@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Upload Questionnaire — GRC MVP{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/questionnaires" class="text-sm text-gray-500 hover:text-gray-700">&larr; Questionnaires</a>
+</div>
+
+<h1 class="text-2xl font-bold mb-6">Upload Questionnaire</h1>
+
+{% if error %}
+<div class="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded mb-4">
+  {{ error }}
+</div>
+{% endif %}
+
+<div class="bg-white border border-gray-200 rounded p-6 max-w-lg">
+  <form method="post" action="/questionnaires/upload" enctype="multipart/form-data" class="space-y-5">
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">
+        Questionnaire name <span class="text-red-500">*</span>
+      </label>
+      <input type="text" name="name" required placeholder="e.g. MegaBank Vendor Assessment Q2 2026"
+             class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Customer name</label>
+      <input type="text" name="customer_name" placeholder="e.g. MegaBank"
+             class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">
+        File <span class="text-red-500">*</span>
+      </label>
+      <input type="file" name="file" accept=".xlsx" required
+             class="block w-full text-sm text-gray-700
+                    file:mr-3 file:py-2 file:px-4 file:rounded
+                    file:border-0 file:text-sm file:font-medium
+                    file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100 cursor-pointer">
+      <p class="text-xs text-gray-400 mt-1">XLSX only. You'll map columns on the next screen.</p>
+    </div>
+
+    <button type="submit"
+            class="bg-blue-600 text-white text-sm px-5 py-2 rounded hover:bg-blue-700 font-medium">
+      Continue
+    </button>
+  </form>
+</div>
+
+{% endblock %}
