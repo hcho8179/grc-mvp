@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Usage — Sentinel{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-bold mb-1">AI Usage & Cost</h1>
+<p class="text-slate-500 text-sm mb-6">{{ month_label }}</p>
+
+{# This month #}
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">LLM Calls (month)</p>
+    <p class="text-3xl font-bold text-slate-900 mt-1">{{ month_calls }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Input Tokens (month)</p>
+    <p class="text-3xl font-bold text-slate-900 mt-1">{{ "{:,}".format(month_input) }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Output Tokens (month)</p>
+    <p class="text-3xl font-bold text-slate-900 mt-1">{{ "{:,}".format(month_output) }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Cost (month)</p>
+    <p class="text-3xl font-bold text-indigo-600 mt-1">${{ "%.4f"|format(month_cost) }}</p>
+  </div>
+</div>
+
+{# Per-questionnaire breakdown #}
+<div class="bg-white rounded-xl border border-slate-200 mb-6">
+  <div class="px-5 py-4 border-b border-slate-100">
+    <h2 class="text-sm font-semibold text-slate-700">Cost by Questionnaire (all time)</h2>
+  </div>
+  {% if per_q %}
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-slate-100 text-left">
+        <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Questionnaire</th>
+        <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">LLM Calls</th>
+        <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Input Tokens</th>
+        <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Output Tokens</th>
+        <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Cost (USD)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in per_q %}
+      <tr class="border-b border-slate-50 hover:bg-slate-50">
+        <td class="px-5 py-3 font-medium text-slate-800">{{ row.name }}</td>
+        <td class="px-5 py-3 text-slate-600">{{ row.calls or 0 }}</td>
+        <td class="px-5 py-3 text-slate-600">{{ "{:,}".format(row.input_tokens or 0) }}</td>
+        <td class="px-5 py-3 text-slate-600">{{ "{:,}".format(row.output_tokens or 0) }}</td>
+        <td class="px-5 py-3 font-medium text-indigo-600">${{ "%.4f"|format(row.cost or 0) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="px-5 py-8 text-center text-slate-400 text-sm">No LLM calls recorded yet.</p>
+  {% endif %}
+</div>
+
+<p class="text-xs text-slate-400">
+  All-time: {{ total_calls }} calls &middot;
+  {{ "{:,}".format(total_input) }} input tokens &middot;
+  {{ "{:,}".format(total_output) }} output tokens &middot;
+  ${{ "%.4f"|format(total_cost) }} total
+</p>
+
+{% endblock %}

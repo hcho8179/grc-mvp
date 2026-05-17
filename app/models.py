@@ -6,6 +6,7 @@ Tables:
   knowledge_chunks  — chunked text from uploaded policies + past Q&A pairs
   questionnaires    — a single uploaded blank questionnaire file
   questions         — individual rows parsed from a questionnaire
+  llm_calls         — per-call token + cost log for the usage dashboard
 """
 
 import enum
@@ -121,6 +122,7 @@ class Questionnaire(Base):
     status = Column(Enum(QuestionnaireStatus), default=QuestionnaireStatus.draft, nullable=False)
     question_count = Column(Integer, default=0, nullable=False)
     raw_xlsx_blob = Column(LargeBinary, nullable=True)
+    answer_col_index = Column(Integer, nullable=True)  # 0-based; which column to write answers into on export
 
     questions = relationship(
         "Question",
@@ -176,6 +178,29 @@ class Question(Base):
         "KnowledgeChunk",
         secondary="question_citations",
         back_populates="cited_in",
+    )
+
+
+# ---------------------------------------------------------------------------
+# LLMCall — token + cost tracking
+# ---------------------------------------------------------------------------
+
+class LLMCall(Base):
+    __tablename__ = "llm_calls"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    model = Column(String(128), nullable=False)
+    input_tokens = Column(Integer, nullable=True)
+    output_tokens = Column(Integer, nullable=True)
+    cost_estimate = Column(Float, nullable=True)  # USD
+
+    questionnaire_id = Column(
+        Integer, ForeignKey("questionnaires.id", ondelete="SET NULL"), nullable=True
+    )
+    question_id = Column(
+        Integer, ForeignKey("questions.id", ondelete="SET NULL"), nullable=True
     )
 
 

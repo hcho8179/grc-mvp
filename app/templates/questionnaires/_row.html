@@ -1,0 +1,119 @@
+<tr id="q-{{ q.id }}" class="border-b border-slate-100 align-top hover:bg-slate-50">
+
+  {# Row number #}
+  <td class="px-3 py-3 text-slate-400 text-xs w-10 tabular-nums">{{ q.row_index + 1 }}</td>
+
+  {# Question text #}
+  <td class="px-3 py-3 text-slate-800 text-sm max-w-xs leading-snug">{{ q.question_text }}</td>
+
+  {# Draft answer — inline editable #}
+  <td class="px-3 py-3 min-w-[220px]">
+    <form hx-patch="/questionnaires/{{ questionnaire_id }}/questions/{{ q.id }}"
+          hx-target="#q-{{ q.id }}"
+          hx-swap="outerHTML"
+          hx-include="this">
+      <textarea name="draft_answer" rows="3"
+                class="w-full text-xs border border-slate-200 rounded-md p-2 resize-y
+                       focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+      >{{ q.draft_answer or '' }}</textarea>
+      <button type="submit"
+              class="mt-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+        Save
+      </button>
+    </form>
+  </td>
+
+  {# Confidence badge #}
+  <td class="px-3 py-3 text-center">
+    {% if q.confidence %}
+      {% if q.confidence.value == "high" %}
+        <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">High</span>
+      {% elif q.confidence.value == "medium" %}
+        <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Med</span>
+      {% elif q.confidence.value == "low" %}
+        <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Low</span>
+      {% endif %}
+    {% else %}
+      <span class="text-slate-300 text-xs">—</span>
+    {% endif %}
+  </td>
+
+  {# Sources — expandable via <details> with HTMX lazy-load #}
+  <td class="px-3 py-3 text-xs">
+    {% if q.cited_chunk_ids %}
+      <div class="flex flex-wrap gap-1.5">
+        {% for cid in q.cited_chunk_ids %}
+        <details class="relative">
+          <summary
+            class="list-none cursor-pointer select-none inline-flex items-center
+                   px-2 py-0.5 rounded-full border border-indigo-200
+                   bg-indigo-50 text-indigo-700 font-mono text-xs hover:bg-indigo-100"
+            hx-get="/questionnaires/{{ questionnaire_id }}/questions/{{ q.id }}/chunks/{{ cid }}"
+            hx-target="#chunk-{{ q.id }}-{{ cid }}"
+            hx-trigger="click once"
+            hx-swap="innerHTML">
+            #{{ cid }}
+          </summary>
+          <div id="chunk-{{ q.id }}-{{ cid }}"
+               class="absolute z-20 left-0 mt-1 w-80 bg-white border border-slate-200
+                      rounded-lg shadow-lg p-3 text-slate-600">
+            <span class="text-slate-400 text-xs italic">Loading…</span>
+          </div>
+        </details>
+        {% endfor %}
+      </div>
+      {% if q.reasoning %}
+      <p class="text-slate-400 mt-1.5 italic leading-snug">{{ q.reasoning }}</p>
+      {% endif %}
+    {% else %}
+      <span class="text-slate-300">—</span>
+    {% endif %}
+  </td>
+
+  {# Status badge #}
+  <td class="px-3 py-3 text-center whitespace-nowrap">
+    {% set s = q.status.value %}
+    {% if s == "pending" %}
+      <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Pending</span>
+    {% elif s == "generated" %}
+      <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Generated</span>
+    {% elif s == "approved" %}
+      <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">Approved</span>
+    {% elif s == "rejected" %}
+      <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Rejected</span>
+    {% endif %}
+  </td>
+
+  {# Actions #}
+  <td class="px-3 py-3 whitespace-nowrap">
+    <div class="flex flex-col gap-1.5">
+      {% if q.status.value != "approved" %}
+      <button hx-post="/questionnaires/{{ questionnaire_id }}/questions/{{ q.id }}/approve"
+              hx-target="#q-{{ q.id }}"
+              hx-swap="outerHTML"
+              class="text-xs px-2.5 py-1 rounded-md bg-emerald-600 text-white
+                     hover:bg-emerald-700 font-medium transition-colors">
+        ✓ Approve
+      </button>
+      {% endif %}
+      {% if q.status.value in ("generated", "approved") %}
+      <button hx-post="/questionnaires/{{ questionnaire_id }}/questions/{{ q.id }}/reject"
+              hx-target="#q-{{ q.id }}"
+              hx-swap="outerHTML"
+              class="text-xs px-2.5 py-1 rounded-md bg-slate-100 text-red-600
+                     hover:bg-red-50 font-medium transition-colors">
+        ✗ Reject
+      </button>
+      {% endif %}
+      <button hx-post="/questionnaires/{{ questionnaire_id }}/questions/{{ q.id }}/regenerate"
+              hx-target="#q-{{ q.id }}"
+              hx-swap="outerHTML"
+              class="text-xs px-2.5 py-1 rounded-md bg-slate-100 text-slate-600
+                     hover:bg-slate-200 font-medium transition-colors">
+        ↺ Regen
+        <span class="htmx-indicator text-slate-400">…</span>
+      </button>
+    </div>
+  </td>
+
+</tr>

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Sentinel{% endblock %}
+{% block content %}
+
+<div class="mb-8">
+  <h1 class="text-3xl font-bold text-slate-900">Dashboard</h1>
+  <p class="text-slate-500 mt-1">AI-powered security questionnaire automation</p>
+</div>
+
+{# ---- Stats cards ---- #}
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Questionnaires</p>
+    <p class="text-3xl font-bold text-slate-900 mt-1">{{ total_questionnaires }}</p>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Questions Answered</p>
+    <p class="text-3xl font-bold text-indigo-600 mt-1">{{ total_answered }}</p>
+    <p class="text-xs text-slate-400 mt-0.5">{{ total_approved }} approved</p>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Avg Confidence</p>
+    <p class="text-3xl font-bold mt-1
+      {% if avg_conf_pct >= 70 %}text-green-600{% elif avg_conf_pct >= 40 %}text-yellow-600{% else %}text-red-600{% endif %}">
+      {{ avg_conf_pct }}%
+    </p>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Hours Saved</p>
+    <p class="text-3xl font-bold text-emerald-600 mt-1">{{ hours_saved }}</p>
+    <p class="text-xs text-slate-400 mt-0.5">@ 8 min/question</p>
+  </div>
+
+</div>
+
+{# ---- Quick actions ---- #}
+<div class="flex gap-3 mb-8">
+  <a href="/knowledge/upload"
+     class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-100 text-slate-700
+            text-sm font-medium hover:bg-slate-200 transition-colors">
+    ↑ Upload Policy
+  </a>
+  <a href="/questionnaires/upload"
+     class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white
+            text-sm font-medium hover:bg-indigo-700 transition-colors">
+    + New Questionnaire
+  </a>
+</div>
+
+{# ---- Recent questionnaires ---- #}
+<div class="bg-white rounded-xl border border-slate-200">
+  <div class="px-5 py-4 border-b border-slate-100">
+    <h2 class="text-sm font-semibold text-slate-700">Recent Questionnaires</h2>
+  </div>
+
+  {% if recent %}
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-slate-100 text-left">
+        <th class="px-5 py-3 font-medium text-slate-500 text-xs uppercase tracking-wide">Name</th>
+        <th class="px-5 py-3 font-medium text-slate-500 text-xs uppercase tracking-wide">Customer</th>
+        <th class="px-5 py-3 font-medium text-slate-500 text-xs uppercase tracking-wide">Status</th>
+        <th class="px-5 py-3 font-medium text-slate-500 text-xs uppercase tracking-wide">Questions</th>
+        <th class="px-5 py-3 font-medium text-slate-500 text-xs uppercase tracking-wide">Uploaded</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in recent %}
+      <tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+        <td class="px-5 py-3">
+          <a href="/questionnaires/{{ q.id }}" class="text-indigo-600 hover:underline font-medium">
+            {{ q.name }}
+          </a>
+        </td>
+        <td class="px-5 py-3 text-slate-500">{{ q.customer_name or "—" }}</td>
+        <td class="px-5 py-3">
+          {% if q.status.value == "draft" %}
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Draft</span>
+          {% elif q.status.value == "in_progress" %}
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">In Progress</span>
+          {% elif q.status.value == "complete" %}
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">Complete</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3 text-slate-700">{{ q.question_count }}</td>
+        <td class="px-5 py-3 text-slate-400">{{ q.created_at.strftime('%b %d, %Y') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="px-5 py-12 text-center">
+    <p class="text-slate-400 mb-3">No questionnaires yet.</p>
+    <a href="/questionnaires/upload" class="text-indigo-600 hover:underline text-sm font-medium">
+      Upload your first questionnaire →
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+{% if total_cost > 0 %}
+<p class="text-xs text-slate-400 mt-4">Total AI cost to date: ${{ "%.4f"|format(total_cost) }}</p>
+{% endif %}
+
+{% endblock %}
