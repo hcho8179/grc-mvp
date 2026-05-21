@@ -19,14 +19,15 @@ async def retrieve_relevant_chunks(
     question_text: str,
     db: Session,
     top_k: int = 5,
-    similarity_threshold: float = 0.35,
     org_id: int | None = None,
 ) -> list[RetrievalResult]:
     """Embed *question_text* and return the top-K most similar KnowledgeChunks.
 
-    Chunks whose cosine similarity falls below *similarity_threshold* are
-    excluded.  Results are ordered highest-similarity first.
-    When org_id is provided, only chunks belonging to that org are searched.
+    No similarity threshold is applied — the best available chunks are always
+    returned and every question always gets a draft. Confidence scoring
+    communicates match quality to the human reviewer, who approves or rejects
+    every answer before anything is exported. A bad draft is better than a
+    silent skip.
     """
     provider = get_embedding_provider()
     embeddings = await provider.embed([question_text], input_type="query")
@@ -64,11 +65,7 @@ async def retrieve_relevant_chunks(
     if not rows:
         return []
 
-    # Bulk-load the matching chunks
-    above = [(row.id, float(row.similarity)) for row in rows if float(row.similarity) >= similarity_threshold]
-    if not above:
-        return []
-
+    above = [(row.id, float(row.similarity)) for row in rows]
     ids = [r[0] for r in above]
     sim_by_id = {r[0]: r[1] for r in above}
     chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.id.in_(ids)).all()

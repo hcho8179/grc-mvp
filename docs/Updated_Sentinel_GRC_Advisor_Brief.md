@@ -184,6 +184,8 @@ Since this is a security product, I want to be transparent about how the tool it
 - SSO / SAML — single sign-on via Google Workspace, Okta, Azure AD
 - Org-level admin settings — force MFA for all members, configure data retention period
 - Answer version history — full edit trail showing who changed an answer and what it said before
+- Answer source traceability — each approved answer remembers which questionnaire and customer it originally came from, so reviewers can trace provenance even after the questionnaire is archived
+- Archive / remove answer from library — let reviewers manually archive or delete a specific answer from the Answer Library without having to delete the whole questionnaire
 - Multi-sheet Excel support — questionnaires that span multiple tabs in the same file
 - Word and PDF questionnaire upload — not just Excel files
 - Web portal integrations — OneTrust, Vanta, Whistic (for customers who share a portal link instead of a file)

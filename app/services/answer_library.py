@@ -151,3 +151,62 @@ async def find_similar_answers(
             similarity=sim,
         ))
     return results
+
+
+async def check_answer_conflict(
+    question_text: str,
+    new_short_answer: str,
+    db: Session,
+    org_id: int,
+) -> str | None:
+    """Return a warning string if a similar approved answer has a conflicting short_answer, else None.
+
+    Only compares Yes/No/Partial answers — N/A is skipped since it rarely signals a real conflict.
+    Threshold of 0.88 means near-identical questions only, avoiding false positives.
+    """
+    if not new_short_answer or new_short_answer == "N/A":
+        return None
+
+    from app.models import ApprovedAnswer
+    from app.services.embeddings import get_embedding_provider
+
+    provider = get_embedding_provider()
+    embeddings = await provider.embed([question_text], input_type="query")
+    query_vec = embeddings[0]
+    vec_str = "[" + ",".join(str(float(v)) for v in query_vec) + "]"
+
+    rows = db.execute(
+        text("""
+            SELECT id, short_answer,
+                   1 - (embedding <=> :vec::vector) AS similarity
+            FROM   approved_answers
+            WHERE  embedding IS NOT NULL
+              AND  status    = 'active'
+              AND  org_id    = :org_id
+              AND  short_answer IS NOT NULL
+              AND  short_answer != 'N/A'
+              AND  short_answer != :new_sa
+            ORDER  BY embedding <=> :vec::vector
+            LIMIT  1
+        """),
+        {"vec": vec_str, "org_id": org_id, "new_sa": new_short_answer},
+    ).fetchall()
+
+    if not rows:
+        return None
+
+    row = rows[0]
+    if float(row.similarity) < 0.88:
+        return None
+
+    conflict = db.query(ApprovedAnswer).filter(ApprovedAnswer.id == row.id).first()
+    if not conflict:
+        return None
+
+    short_q = conflict.question_text[:120] + ("…" if len(conflict.question_text) > 120 else "")
+    return (
+        f'A previously approved answer to a similar question was "{row.short_answer}" '
+        f'but this draft says "{new_short_answer}". '
+        f'Previous question: "{short_q}". '
+        f'Verify which answer reflects current company policy before approving.'
+    )

@@ -9,9 +9,12 @@ export default function Trash() {
   const { user } = useAuth()
   const canRestore = user?.role === 'owner' || user?.role === 'admin'
 
+  const canPurge = user?.role === 'owner'
+
   const [data, setData] = useState({ questionnaires: [], documents: [] })
   const [loading, setLoading] = useState(true)
   const [restoring, setRestoring] = useState(null)
+  const [purging, setPurging] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -35,6 +38,19 @@ export default function Trash() {
     setRestoring(null)
   }
 
+  const handlePurge = async (type, id, name) => {
+    if (!confirm(`Permanently delete "${name}"? This cannot be undone.`)) return
+    setPurging(id)
+    try {
+      if (type === 'questionnaire') await api.purgeQuestionnaire(id)
+      else await api.purgeDocument(id)
+      load()
+    } catch (e) {
+      alert(e.message || 'Delete failed')
+    }
+    setPurging(null)
+  }
+
   const fmt = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   const total = data.questionnaires.length + data.documents.length
 
@@ -45,7 +61,7 @@ export default function Trash() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold" style={{ color: t.text }}>Trash</h1>
           <p className="text-sm mt-0.5" style={{ color: t.text2 }}>
-            Deleted items — restore to recover, or they stay here indefinitely.
+            Deleted items — restore to recover, or permanently delete to remove all data.
           </p>
         </div>
 
@@ -79,15 +95,26 @@ export default function Trash() {
                           {q.question_count} questions · deleted {fmt(q.deleted_at)}
                         </p>
                       </div>
-                      {canRestore && (
-                        <button
-                          onClick={() => handleRestore('questionnaire', q.id, q.name)}
-                          disabled={restoring === q.id}
-                          className="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-40"
-                          style={{ background: 'rgba(22,163,74,0.1)', color: '#16a34a', border: '1px solid rgba(22,163,74,0.25)' }}>
-                          {restoring === q.id ? 'Restoring…' : 'Restore'}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {canRestore && (
+                          <button
+                            onClick={() => handleRestore('questionnaire', q.id, q.name)}
+                            disabled={restoring === q.id || purging === q.id}
+                            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-40"
+                            style={{ background: 'rgba(22,163,74,0.1)', color: '#16a34a', border: '1px solid rgba(22,163,74,0.25)' }}>
+                            {restoring === q.id ? 'Restoring…' : 'Restore'}
+                          </button>
+                        )}
+                        {canPurge && (
+                          <button
+                            onClick={() => handlePurge('questionnaire', q.id, q.name)}
+                            disabled={restoring === q.id || purging === q.id}
+                            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-40"
+                            style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                            {purging === q.id ? 'Deleting…' : 'Delete permanently'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -110,15 +137,26 @@ export default function Trash() {
                           {d.chunk_count} chunks · deleted {fmt(d.deleted_at)}
                         </p>
                       </div>
-                      {canRestore && (
-                        <button
-                          onClick={() => handleRestore('document', d.id, d.filename)}
-                          disabled={restoring === d.id}
-                          className="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-40"
-                          style={{ background: 'rgba(22,163,74,0.1)', color: '#16a34a', border: '1px solid rgba(22,163,74,0.25)' }}>
-                          {restoring === d.id ? 'Restoring…' : 'Restore'}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {canRestore && (
+                          <button
+                            onClick={() => handleRestore('document', d.id, d.filename)}
+                            disabled={restoring === d.id || purging === d.id}
+                            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-40"
+                            style={{ background: 'rgba(22,163,74,0.1)', color: '#16a34a', border: '1px solid rgba(22,163,74,0.25)' }}>
+                            {restoring === d.id ? 'Restoring…' : 'Restore'}
+                          </button>
+                        )}
+                        {canPurge && (
+                          <button
+                            onClick={() => handlePurge('document', d.id, d.filename)}
+                            disabled={restoring === d.id || purging === d.id}
+                            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-40"
+                            style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                            {purging === d.id ? 'Deleting…' : 'Delete permanently'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

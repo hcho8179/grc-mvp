@@ -110,6 +110,52 @@ def send_password_reset(to_email: str, reset_url: str, full_name: str) -> None:
     })
 
 
+def send_generation_complete(
+    to_email: str,
+    user_name: str,
+    questionnaire_name: str,
+    total: int,
+    conflicts: int,
+    questionnaire_url: str,
+) -> None:
+    settings = get_settings()
+    conflict_note = (
+        f'<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:14px;margin-bottom:20px">'
+        f'<p style="margin:0;font-size:13px;color:#92400e">'
+        f'⚠ <strong>{conflicts} question{"s" if conflicts != 1 else ""}</strong> flagged a potential conflict with a '
+        f'previously approved answer. Review these carefully before approving.</p></div>'
+        if conflicts else ""
+    )
+    _send({
+        "from": settings.resend_from_email,
+        "to": [to_email],
+        "subject": f"[Sentinel] Drafts ready — {questionnaire_name}",
+        "html": f"""
+        <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111827">
+          <div style="margin-bottom:24px">
+            <span style="background:#2563eb;color:white;padding:6px 14px;border-radius:8px;font-weight:700;font-size:14px">
+              Sentinel GRC
+            </span>
+          </div>
+          <h1 style="font-size:22px;font-weight:700;margin:0 0 8px">Drafts ready for review</h1>
+          <p style="color:#6b7280;margin:0 0 20px">
+            Hi {user_name or to_email}, draft answers are ready for <strong>{questionnaire_name}</strong>.
+            {total} question{"s are" if total != 1 else " is"} ready for your review.
+          </p>
+          {conflict_note}
+          <a href="{questionnaire_url}"
+             style="display:inline-block;background:#2563eb;color:white;padding:12px 28px;
+                    border-radius:10px;font-weight:600;font-size:14px;text-decoration:none">
+            Review Answers
+          </a>
+          <p style="color:#9ca3af;font-size:12px;margin-top:32px">
+            Remember: no answer is included in your export until you explicitly approve it.
+          </p>
+        </div>
+        """,
+    })
+
+
 def send_question_assigned(
     to_email: str,
     assignee_name: str,

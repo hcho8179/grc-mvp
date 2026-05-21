@@ -5,7 +5,7 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from app.limiter import limiter
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -76,7 +76,7 @@ def _user_payload(user: User, org: Organization) -> dict:
 
 @router.post("/register")
 @limiter.limit("5/minute")
-async def register(request: Request, req: RegisterRequest, response: Response, db: Session = Depends(get_db)):
+async def register(request: Request, req: RegisterRequest, response: Response, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     if not req.email.strip() or "@" not in req.email:
         raise HTTPException(status_code=400, detail="Valid email required")
     _check_password(req.password)
@@ -134,8 +134,9 @@ async def register(request: Request, req: RegisterRequest, response: Response, d
     db.refresh(user)
 
     from app.services.jobs import enqueue
+    from app.services.starter_pack import seed_starter_policies
     if new_org_id is not None:
-        enqueue("seed_starter_policies", {"org_id": new_org_id})
+        background_tasks.add_task(seed_starter_policies, new_org_id)
 
     # Send verification email via persistent job queue
     verification_token = secrets.token_urlsafe(32)

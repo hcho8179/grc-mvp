@@ -23,6 +23,7 @@ from app.models import (
     FileType,
     KnowledgeChunk,
     LLMCall,
+    Notification,
     Question,
     QuestionComment,
     QuestionnaireStatus,
@@ -33,7 +34,7 @@ from app.models import (
     User,
     question_citations,
 )
-from app.services.answer_library import detect_category, classify_category
+from app.services.answer_library import detect_category, classify_category, check_answer_conflict
 from app.services.audit import log_event
 from app.services.email import send_question_assigned
 from app.services.chunking import chunk_text
@@ -82,6 +83,8 @@ def _q_json(q: Question, assignee: User | None = None, chunk_scores: dict | None
         "cited_chunks": cited,   # [{id, score}] — score is cosine similarity 0–1
         "reasoning": q.reasoning or "",
         "has_starter_sources": has_starter,
+        "no_kb_context": q.status.value == "generated" and not (q.draft_answer or "").strip() and not (q.cited_chunk_ids or []),
+        "conflict_warning": q.conflict_warning or None,
         "assigned_to_id": q.assigned_to_id,
         "assigned_to_email": assignee.email if assignee else None,
         "assigned_to_name": assignee.full_name if assignee else None,
@@ -462,10 +465,9 @@ async def api_generate(
         .all()
     )
     updated = 0
+    conflict_count = 0
     for q in pending:
         chunks = await retrieve_relevant_chunks(q.question_text, db, org_id=current_user.org_id)
-        if not chunks:
-            continue
         result = await generate_answer(q.question_text, chunks)
         q.draft_answer = result.answer
         q.short_answer = result.short_answer
@@ -476,6 +478,16 @@ async def api_generate(
         if not q.category:
             q.category = await classify_category(q.question_text)
         _save_citation_scores(db, q.id, chunks, result.cited_chunk_ids)
+        # Consistency check against previously approved answers
+        try:
+            warning = await check_answer_conflict(
+                q.question_text, result.short_answer or "", db, current_user.org_id
+            )
+            q.conflict_warning = warning
+            if warning:
+                conflict_count += 1
+        except Exception:
+            pass
         log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
                   action="answer.generated", resource_type="question", resource_id=q.id,
                   detail={"questionnaire_id": questionnaire_id, "confidence": result.confidence})
@@ -485,7 +497,37 @@ async def api_generate(
 
     if qs.status == QuestionnaireStatus.draft:
         qs.status = QuestionnaireStatus.in_progress
+
+    # In-app notification for the user who triggered generation
+    db.add(Notification(
+        org_id=current_user.org_id,
+        user_id=current_user.id,
+        type="generation_complete",
+        title=f"Drafts ready — {qs.name}",
+        body=f"{updated} answer{'s' if updated != 1 else ''} drafted."
+             + (f" {conflict_count} conflict{'s' if conflict_count != 1 else ''} flagged." if conflict_count else ""),
+        resource_type="questionnaire",
+        resource_id=questionnaire_id,
+    ))
     db.commit()
+
+    # Email notification (best-effort)
+    try:
+        from app.services.email import send_generation_complete
+        from app.config import get_settings
+        settings = get_settings()
+        url = f"{settings.app_url}/questionnaires/{questionnaire_id}"
+        send_generation_complete(
+            to_email=current_user.email,
+            user_name=current_user.full_name or "",
+            questionnaire_name=qs.name,
+            total=updated,
+            conflicts=conflict_count,
+            questionnaire_url=url,
+        )
+    except Exception:
+        pass
+
     return {"updated": updated, "status": "ok"}
 
 
@@ -511,9 +553,6 @@ async def api_regenerate_question(
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     chunks = await retrieve_relevant_chunks(q.question_text, db, org_id=current_user.org_id)
-    if not chunks:
-        return JSONResponse({"error": "No relevant chunks found to generate an answer."}, status_code=400)
-
     result = await generate_answer(q.question_text, chunks)
     q.draft_answer = result.answer
     q.short_answer = result.short_answer
@@ -534,7 +573,7 @@ async def api_regenerate_question(
 
 
 @router.post("/questionnaires/{questionnaire_id}/questions/{question_id}/approve")
-def api_approve_question(
+async def api_approve_question(
     questionnaire_id: int,
     question_id: int,
     current_user: User = Depends(get_current_user),
@@ -556,6 +595,7 @@ def api_approve_question(
 
     q.final_answer = q.draft_answer
     q.status = QuestionStatus.approved
+    q.conflict_warning = None  # resolved on approval
 
     if q.final_answer and q.question_text:
         doc = _get_approved_doc(db, current_user.org_id)
@@ -568,6 +608,38 @@ def api_approve_question(
         )
         db.add(chunk)
         doc.chunk_count = (doc.chunk_count or 0) + 1
+
+        # Save to answer library so future questionnaires can match against it
+        try:
+            from app.services.embeddings import get_embedding_provider
+            provider = get_embedding_provider()
+            embs = await provider.embed([q.question_text], input_type="query")
+            conf_map = {"high": 0.9, "medium": 0.6, "low": 0.3}
+            conf_score = conf_map.get(q.confidence.value if q.confidence else "low", 0.3)
+            existing = db.query(ApprovedAnswer).filter(
+                ApprovedAnswer.source_question_id == q.id
+            ).first()
+            if existing:
+                existing.answer_text = q.final_answer
+                existing.short_answer = q.short_answer
+                existing.cited_chunk_ids = q.cited_chunk_ids
+                existing.confidence_score = conf_score
+                existing.embedding = embs[0]
+                existing.status = "active"
+            else:
+                db.add(ApprovedAnswer(
+                    question_text=q.question_text,
+                    answer_text=q.final_answer,
+                    short_answer=q.short_answer,
+                    answer_category=detect_category(q.question_text),
+                    cited_chunk_ids=q.cited_chunk_ids,
+                    confidence_score=conf_score,
+                    embedding=embs[0],
+                    source_question_id=q.id,
+                    org_id=current_user.org_id,
+                ))
+        except Exception:
+            pass  # library write failure must not break approval
 
     remaining = db.query(Question).filter(
         Question.questionnaire_id == questionnaire_id,
@@ -858,6 +930,61 @@ def api_restore_document(
     return {"status": "restored"}
 
 
+@router.post("/questionnaires/{questionnaire_id}/purge")
+def api_purge_questionnaire(
+    questionnaire_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_role(current_user, "owner")
+    qs = db.query(Questionnaire).filter(
+        Questionnaire.id == questionnaire_id,
+        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.deleted_at != None,
+    ).first()
+    if not qs:
+        return JSONResponse({"error": "Not found in trash"}, status_code=404)
+    name = qs.name
+    question_ids = [q.id for q in db.query(Question.id).filter(Question.questionnaire_id == questionnaire_id).all()]
+    if question_ids:
+        db.query(ApprovedAnswer).filter(ApprovedAnswer.source_question_id.in_(question_ids)).update(
+            {ApprovedAnswer.source_question_id: None}, synchronize_session=False
+        )
+        db.execute(question_citations.delete().where(question_citations.c.question_id.in_(question_ids)))
+        db.query(QuestionComment).filter(QuestionComment.question_id.in_(question_ids)).delete(synchronize_session=False)
+        db.query(LLMCall).filter(LLMCall.question_id.in_(question_ids)).delete(synchronize_session=False)
+        db.query(Question).filter(Question.questionnaire_id == questionnaire_id).delete(synchronize_session=False)
+    db.delete(qs)
+    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+              action="questionnaire.purged", resource_type="questionnaire", resource_id=questionnaire_id,
+              detail={"name": name})
+    db.commit()
+    return {"status": "purged"}
+
+
+@router.post("/knowledge/{doc_id}/purge")
+def api_purge_document(
+    doc_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_role(current_user, "owner")
+    doc = db.query(Document).filter(
+        Document.id == doc_id,
+        Document.org_id == current_user.org_id,
+        Document.deleted_at != None,
+    ).first()
+    if not doc:
+        return JSONResponse({"error": "Not found in trash"}, status_code=404)
+    filename = doc.filename
+    db.delete(doc)
+    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+              action="document.purged", resource_type="document", resource_id=doc_id,
+              detail={"filename": filename})
+    db.commit()
+    return {"status": "purged"}
+
+
 # ── chunks (for source references) ───────────────────────────────────────────
 
 @router.get("/chunks/{chunk_id}")
@@ -875,6 +1002,7 @@ def api_get_chunk(
         "source_document": chunk.source_document,
         "source_section": chunk.source_section,
         "source_type": chunk.source_type.value,
+        "document_uploaded_at": chunk.document.created_at.isoformat() if chunk.document else None,
     }
 
 
@@ -1434,3 +1562,63 @@ def api_audit_log(
         }
         for e in events
     ]
+
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+def _notif_json(n: Notification) -> dict:
+    return {
+        "id": n.id,
+        "type": n.type,
+        "title": n.title,
+        "body": n.body or "",
+        "read": n.read,
+        "resource_type": n.resource_type,
+        "resource_id": n.resource_id,
+        "created_at": n.created_at.isoformat(),
+    }
+
+
+@router.get("/notifications")
+def api_list_notifications(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    notifs = (
+        db.query(Notification)
+        .filter(Notification.user_id == current_user.id)
+        .order_by(Notification.created_at.desc())
+        .limit(30)
+        .all()
+    )
+    unread = sum(1 for n in notifs if not n.read)
+    return {"notifications": [_notif_json(n) for n in notifs], "unread": unread}
+
+
+@router.post("/notifications/{notification_id}/read")
+def api_mark_notification_read(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    n = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id,
+    ).first()
+    if n:
+        n.read = True
+        db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/notifications/read-all")
+def api_mark_all_notifications_read(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.read == False,
+    ).update({"read": True}, synchronize_session=False)
+    db.commit()
+    return {"status": "ok"}

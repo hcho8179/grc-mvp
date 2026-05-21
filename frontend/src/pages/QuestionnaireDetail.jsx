@@ -70,10 +70,16 @@ function SourcesPanel({ citedChunks, t }) {
         {!loading && ids.map(id => {
           const c = chunks[id]
           const score = scoreMap[id]
+          const uploadedAt = c?.document_uploaded_at ? new Date(c.document_uploaded_at) : null
+          const monthsOld = uploadedAt ? Math.floor((Date.now() - uploadedAt) / (1000 * 60 * 60 * 24 * 30)) : null
+          const isStale = monthsOld !== null && monthsOld >= 12
+          const dateLabel = uploadedAt
+            ? uploadedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+            : null
           return (
             <div key={id} className="rounded-lg p-3"
                  style={{ background: t.dark ? 'rgba(59,130,246,0.05)' : '#eff6ff',
-                          border: `1px solid ${t.dark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.2)'}` }}>
+                          border: `1px solid ${isStale ? 'rgba(245,158,11,0.4)' : (t.dark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.2)')}` }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-xs font-semibold truncate" style={{ color: t.primary }}>
                   {c?.source_document || `Source #${id}`}
@@ -83,7 +89,14 @@ function SourcesPanel({ citedChunks, t }) {
                     {c.source_section}
                   </span>
                 )}
-                <div className="ml-auto flex-shrink-0">
+                <div className="ml-auto flex-shrink-0 flex items-center gap-1.5">
+                  {dateLabel && (
+                    <span className="text-[10px] font-medium flex items-center gap-1"
+                          style={{ color: isStale ? '#b45309' : t.text3 }}
+                          title={isStale ? `Uploaded ${monthsOld} months ago — verify this policy is still current` : `Uploaded ${dateLabel}`}>
+                      {isStale && '⚠ '}Uploaded {dateLabel}
+                    </span>
+                  )}
                   <ScoreBadge score={score} />
                 </div>
               </div>
@@ -345,6 +358,28 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
 
       {/* Answer + panels */}
       <div className="flex-1 overflow-y-auto px-8 py-5">
+        {q.no_kb_context && (
+          <div className="mb-3 flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-xs"
+               style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.25)', color: '#b91c1c' }}>
+            <span className="mt-0.5 flex-shrink-0 text-sm">✕</span>
+            <span>
+              <span className="font-semibold">No knowledge base found.</span>
+              {' '}There are no policy documents to draw from.{' '}
+              <a href="/knowledge/upload" className="underline font-semibold hover:opacity-70">Upload your policies</a>
+              {' '}to enable automated drafting, or write this answer manually below.
+            </span>
+          </div>
+        )}
+        {q.conflict_warning && (
+          <div className="mb-3 flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-xs"
+               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', color: '#92400e' }}>
+            <span className="mt-0.5 flex-shrink-0 text-sm">⚠</span>
+            <span>
+              <span className="font-semibold">Conflicts with a previously approved answer.</span>
+              {' '}{q.conflict_warning}
+            </span>
+          </div>
+        )}
         {q.has_starter_sources && (
           <div className="mb-3 flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-xs"
                style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', color: '#92400e' }}>
@@ -672,8 +707,12 @@ export default function QuestionnaireDetail() {
         <div className="flex-1 overflow-y-auto px-2 py-2">
           {questions.map((q, i) => {
             const isActive = q.id === currentId
+            const noKb = q.no_kb_context
+            const hasConflict = !!q.conflict_warning
             const dot = q.status === 'approved' ? '#22c55e'
                       : q.status === 'rejected'  ? '#ef4444'
+                      : noKb                      ? '#ef4444'
+                      : hasConflict               ? '#d97706'
                       : q.status === 'generated' ? t.primary
                       : t.text3
             return (
@@ -692,7 +731,17 @@ export default function QuestionnaireDetail() {
                   <span className="text-xs font-semibold" style={{ color: isActive ? t.primary : t.text }}>
                     Q{i + 1}
                   </span>
-                  {q.confidence === 'high' && q.status === 'generated' && (
+                  {noKb ? (
+                    <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded"
+                          style={{ background: 'rgba(239,68,68,0.1)', color: '#b91c1c', border: '1px solid rgba(239,68,68,0.25)' }}>
+                      MANUAL
+                    </span>
+                  ) : hasConflict ? (
+                    <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded"
+                          style={{ background: 'rgba(245,158,11,0.1)', color: '#b45309', border: '1px solid rgba(245,158,11,0.3)' }}>
+                      CONFLICT
+                    </span>
+                  ) : q.confidence === 'high' && q.status === 'generated' && (
                     <span className="ml-auto text-[10px] font-semibold" style={{ color: '#22c55e' }}>H</span>
                   )}
                 </div>

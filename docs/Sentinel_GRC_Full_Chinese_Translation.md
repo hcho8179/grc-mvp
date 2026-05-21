@@ -217,6 +217,8 @@ Owners 可通过 email 邀请 team members。
 - SSO / SAML（Google Workspace、Okta、Azure AD）
 - Org-level admin settings
 - Answer version history
+- Answer source traceability（答案来源追溯）—— 每条 approved answer 记录其来源于哪份 questionnaire 与哪个客户，即使该 questionnaire 已归档也可追溯来源
+- Archive / remove answer from library（从答案库中归档或删除答案）—— 让 reviewer 可以直接从答案库中归档或删除某条特定答案，无需删除整份 questionnaire
 - Multi-sheet Excel support
 - Word 与 PDF questionnaire upload
 - Web portal integrations（OneTrust、Vanta、Whistic）

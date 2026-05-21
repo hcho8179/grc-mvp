@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
@@ -36,8 +36,14 @@ async def lifespan(app: FastAPI):
 from app.limiter import limiter
 
 app = FastAPI(title="Sentinel GRC", version="0.1.0", lifespan=lifespan)
+async def _json_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many attempts. Please wait a moment and try again."},
+    )
+
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _json_rate_limit_handler)
 
 # Security headers on every response
 @app.middleware("http")

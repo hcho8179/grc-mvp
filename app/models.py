@@ -252,6 +252,7 @@ class Question(Base):
     confidence = Column(Enum(ConfidenceLevel), nullable=True)
     cited_chunk_ids = Column(JSON, nullable=True)  # list[int] — populated by Phase 4
     reasoning = Column(Text, nullable=True)         # LLM confidence explanation
+    conflict_warning = Column(Text, nullable=True)  # set when draft contradicts a prior approved answer
     category = Column(String(64), nullable=True, index=True)  # embedding-classified topic
 
     # Assignment — nullable; SET NULL when user is deleted
@@ -306,6 +307,7 @@ class ApprovedAnswer(Base):
 
     question_text = Column(Text, nullable=False)
     answer_text = Column(Text, nullable=False)
+    short_answer = Column(String(32), nullable=True)        # Yes | No | Partial | N/A
     answer_category = Column(String(100), nullable=True)   # auto-detected from question text
     cited_chunk_ids = Column(JSON, nullable=True)
     confidence_score = Column(Float, nullable=True)        # 0-1 float
@@ -414,6 +416,24 @@ class JobStatus(str, enum.Enum):
     running = "running"
     done    = "done"
     failed  = "failed"
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    org_id  = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id",         ondelete="CASCADE"), nullable=False, index=True)
+
+    type  = Column(String(64), nullable=False)   # "generation_complete" | "question_assigned"
+    title = Column(Text, nullable=False)
+    body  = Column(Text, nullable=True)
+    read  = Column(Boolean, default=False, nullable=False, server_default="false")
+
+    resource_type = Column(String(64), nullable=True)   # "questionnaire" | "question"
+    resource_id   = Column(Integer, nullable=True)
 
 
 class JobQueue(Base):

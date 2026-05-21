@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { api } from '../api'
@@ -34,6 +34,7 @@ export function Icon({ name, size = 16, color = 'currentColor' }) {
     logout:    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75"/>,
     chat:      <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9.75a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 0 1 .778-.332 48.294 48.294 0 0 0 5.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"/>,
     inbox:     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 0 1 2.012 1.244l.256.512a2.25 2.25 0 0 0 2.013 1.244h3.218a2.25 2.25 0 0 0 2.013-1.244l.256-.512a2.25 2.25 0 0 1 2.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 0 0-2.15-1.588H6.911a2.25 2.25 0 0 0-2.15 1.588L2.1 13.177a2.25 2.25 0 0 0-.1.661Z"/>,
+    bell:      <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"/>,
   }
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -105,8 +106,51 @@ export default function Layout() {
   const nav = useNavigate()
   const { t, toggle } = useTheme()
   const [showInvite, setShowInvite] = useState(false)
+  const [notifications, setNotifications] = useState([])
+  const [unread, setUnread] = useState(0)
+  const [showNotifs, setShowNotifs] = useState(false)
+  const notifRef = useRef(null)
 
   const handleLogout = () => { logout(); nav('/login', { replace: true }) }
+
+  const loadNotifs = () => {
+    api.getNotifications()
+      .then(d => { setNotifications(d.notifications); setUnread(d.unread) })
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    loadNotifs()
+    const interval = setInterval(loadNotifs, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const handler = (e) => { if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifs(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleMarkAllRead = async () => {
+    await api.markAllNotificationsRead()
+    setNotifications(p => p.map(n => ({ ...n, read: true })))
+    setUnread(0)
+  }
+
+  const handleMarkRead = async (id) => {
+    await api.markNotificationRead(id)
+    setNotifications(p => p.map(n => n.id === id ? { ...n, read: true } : n))
+    setUnread(p => Math.max(0, p - 1))
+  }
+
+  const fmtNotifTime = (iso) => {
+    const d = new Date(iso)
+    const diff = Date.now() - d
+    if (diff < 60000) return 'Just now'
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  }
 
   const initials = user?.full_name
     ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
@@ -154,6 +198,76 @@ export default function Layout() {
             </div>
           ))}
         </nav>
+
+        {/* Notifications */}
+        <div className="px-3 py-2 relative" ref={notifRef} style={{ borderTop: `1px solid ${t.sidebarBorder}` }}>
+          <button
+            onClick={() => setShowNotifs(s => !s)}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all"
+            style={{ color: t.text3 }}
+            onMouseEnter={e => e.currentTarget.style.background = t.dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <div className="relative flex-shrink-0">
+              <Icon name="bell" size={14} color={t.text3} />
+              {unread > 0 && (
+                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full text-[8px] font-bold flex items-center justify-center text-white"
+                      style={{ background: '#ef4444' }}>
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
+            </div>
+            Notifications
+          </button>
+
+          {showNotifs && (
+            <div className="absolute bottom-full left-3 right-3 mb-1 rounded-xl shadow-2xl z-50 overflow-hidden"
+                 style={{ ...t.card, border: `1px solid ${t.borderColor}` }}>
+              <div className="flex items-center justify-between px-3 py-2.5"
+                   style={{ borderBottom: `1px solid ${t.borderColor}` }}>
+                <span className="text-xs font-semibold" style={{ color: t.text }}>Notifications</span>
+                {unread > 0 && (
+                  <button onClick={handleMarkAllRead}
+                          className="text-[10px] font-semibold hover:opacity-70 transition-opacity"
+                          style={{ color: t.primary }}>
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <p className="text-xs text-center py-6" style={{ color: t.text3 }}>No notifications</p>
+                ) : notifications.map(n => (
+                  <div key={n.id}
+                       className="px-3 py-2.5 cursor-pointer transition-colors"
+                       style={{
+                         background: n.read ? 'transparent' : (t.dark ? 'rgba(59,130,246,0.06)' : 'rgba(37,99,235,0.04)'),
+                         borderBottom: `1px solid ${t.borderColor}`,
+                       }}
+                       onClick={() => {
+                         if (!n.read) handleMarkRead(n.id)
+                         if (n.resource_type === 'questionnaire' && n.resource_id) {
+                           nav(`/questionnaires/${n.resource_id}`)
+                           setShowNotifs(false)
+                         }
+                       }}
+                       onMouseEnter={e => e.currentTarget.style.background = t.dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'}
+                       onMouseLeave={e => e.currentTarget.style.background = n.read ? 'transparent' : (t.dark ? 'rgba(59,130,246,0.06)' : 'rgba(37,99,235,0.04)')}>
+                    <div className="flex items-start gap-2">
+                      {!n.read && (
+                        <div className="w-1.5 h-1.5 rounded-full mt-1 flex-shrink-0" style={{ background: t.primary }} />
+                      )}
+                      <div className={!n.read ? '' : 'pl-3.5'}>
+                        <p className="text-[11px] font-semibold leading-snug" style={{ color: t.text }}>{n.title}</p>
+                        {n.body && <p className="text-[10px] mt-0.5 leading-snug" style={{ color: t.text3 }}>{n.body}</p>}
+                        <p className="text-[10px] mt-0.5" style={{ color: t.text3 }}>{fmtNotifTime(n.created_at)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Bottom: invite code */}
         <div className="px-3 py-3" style={{ borderTop: `1px solid ${t.sidebarBorder}` }}>

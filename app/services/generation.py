@@ -450,7 +450,7 @@ async def generate_answer(question_text: str, retrieved_chunks: list) -> AnswerR
     if not retrieved_chunks:
         return AnswerResult(
             answer="", confidence="low", insufficient_context=True,
-            reasoning="No relevant context found above similarity threshold.",
+            reasoning="No knowledge base documents found. Write this answer manually based on your company's actual policies.",
         )
 
     provider = get_llm_provider()

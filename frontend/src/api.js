@@ -127,6 +127,13 @@ export const api = {
   getTrash:              ()      => get('/trash'),
   restoreQuestionnaire:  (id)    => post(`/questionnaires/${id}/restore`, {}),
   restoreDocument:       (id)    => post(`/knowledge/${id}/restore`, {}),
+  purgeQuestionnaire:    (id)    => post(`/questionnaires/${id}/purge`, {}),
+  purgeDocument:         (id)    => post(`/knowledge/${id}/purge`, {}),
+
+  // Notifications
+  getNotifications:       ()   => get('/notifications'),
+  markNotificationRead:   (id) => post(`/notifications/${id}/read`, {}),
+  markAllNotificationsRead: () => post('/notifications/read-all', {}),
 
   // Invites
   createInvite:    ()   => post('/auth/invites', {}),

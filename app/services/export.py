@@ -86,7 +86,7 @@ def export_questionnaire_to_xlsx(questionnaire_id: int, db: Session) -> bytes:
 
     # Footer: two rows below the last data row
     footer_row = (q.question_count or 0) + 3
-    ws.cell(row=footer_row, column=1, value="Generated with Sentinel (AI-powered GRC)")
+    ws.cell(row=footer_row, column=1, value="Generated with Sentinel GRC")
 
     buf = io.BytesIO()
     wb.save(buf)

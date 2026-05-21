@@ -30,6 +30,10 @@ export function AuthProvider({ children }) {
     localStorage.removeItem(USER_KEY)
   }
 
+  const _parseJson = async (res, fallback) => {
+    try { return await res.json() } catch { return { detail: fallback } }
+  }
+
   const login = async (email, password) => {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
@@ -37,7 +41,7 @@ export function AuthProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     })
-    const data = await res.json()
+    const data = await _parseJson(res, 'Login failed')
     if (!res.ok) throw new Error(data.detail || 'Login failed')
     saveUser(data.user)
     return data.user
@@ -50,7 +54,7 @@ export function AuthProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    const data = await res.json()
+    const data = await _parseJson(res, 'Registration failed')
     if (!res.ok) throw new Error(data.detail || 'Registration failed')
     saveUser(data.user)
     return data.user
