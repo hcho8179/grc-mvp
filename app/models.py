@@ -382,6 +382,30 @@ question_citations = Table(
 
 
 # ---------------------------------------------------------------------------
+# Invite — one-time expiring invite links
+# ---------------------------------------------------------------------------
+
+class Invite(Base):
+    __tablename__ = "invites"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    used_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Denormalised so the invite page can show who created the invite
+    created_by_email = Column(String(256), nullable=True)
+
+
+# ---------------------------------------------------------------------------
 # Job queue  (Postgres-backed — survives server restarts)
 # ---------------------------------------------------------------------------
 

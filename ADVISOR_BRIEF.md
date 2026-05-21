@@ -145,8 +145,24 @@ Since this is a security product, I want to be transparent about how the tool it
 - Error tracking via Sentry (crash reports, never user data)
 - Automated test suite runs on every code change via CI pipeline
 
+**Team invites**
+- Owners and admins generate a unique invite link from the Team page — there is no permanent "invite code"
+- Each link is single-use (consumed the moment someone registers with it) and expires automatically after 48 hours
+- Admins can revoke any active link at any time before it is used
+- The invite token is never stored in the database — only its hash — so a database leak does not expose usable links
+
 **Coming soon**
 - MFA (authenticator app / TOTP) — opt-in per user, with org-level enforcement for admins
+- Data retention / purge job — soft-deleted items auto-permanently removed after 90 days (with privacy policy disclosure)
+- Email notifications — alerts when a question is assigned to you, when a questionnaire is ready for review
+- SSO / SAML — single sign-on via Google Workspace, Okta, Azure AD
+- Org-level admin settings — force MFA for all members, configure data retention period
+- Answer library — previously approved answers suggested automatically when a similar question appears in a future questionnaire
+- Answer version history — full edit trail showing who changed an answer and what it said before
+- Multi-sheet Excel support — questionnaires that span multiple tabs in the same file
+- Word and PDF questionnaire upload — not just Excel files
+- Web portal integrations — OneTrust, Vanta, Whistic (for customers who share a portal link instead of a file)
+- Common framework templates — pre-built questionnaire templates for CAIQ, SIG Lite, VSA so teams can start without waiting for a customer to send one
 
 ---
 

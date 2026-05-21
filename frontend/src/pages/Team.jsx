@@ -25,9 +25,46 @@ export default function Team() {
   const { user: me, login } = useAuth()
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [changing, setChanging] = useState(null) // user_id being changed
-  const [confirm, setConfirm] = useState(null)   // { userId, name, newRole }
+  const [changing, setChanging] = useState(null)
+  const [confirm, setConfirm] = useState(null)
   const [error, setError] = useState('')
+
+  // Invite state
+  const [invites, setInvites] = useState([])
+  const [generating, setGenerating] = useState(false)
+  const [newLink, setNewLink] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [revoking, setRevoking] = useState(null)
+
+  const canInvite = me?.role === 'owner' || me?.role === 'admin'
+
+  const loadInvites = () => {
+    if (!canInvite) return
+    api.listInvites().then(setInvites).catch(() => {})
+  }
+
+  const handleGenerate = async () => {
+    setGenerating(true)
+    setNewLink('')
+    try {
+      const res = await api.createInvite()
+      setNewLink(res.url)
+      loadInvites()
+    } catch {}
+    setGenerating(false)
+  }
+
+  const handleCopy = (link) => {
+    navigator.clipboard.writeText(link)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleRevoke = async (id) => {
+    setRevoking(id)
+    try { await api.revokeInvite(id); loadInvites() } catch {}
+    setRevoking(null)
+  }
 
   const isOwner = me?.role === 'owner'
 
@@ -35,7 +72,7 @@ export default function Team() {
     setLoading(true)
     api.getTeam().then(setMembers).catch(console.error).finally(() => setLoading(false))
   }
-  useEffect(load, [])
+  useEffect(() => { load(); loadInvites() }, [])
 
   const handleRoleChange = (member, newRole) => {
     if (newRole === member.role) return
@@ -76,27 +113,76 @@ export default function Team() {
           </p>
         </div>
 
-        {/* Invite code box */}
-        <div className="rounded-xl p-5 mb-6" style={t.card}>
-          <p className="text-xs font-semibold mb-1" style={{ color: t.text3 }}>Invite teammates</p>
-          <p className="text-sm mb-3" style={{ color: t.text2 }}>
-            Share your workspace invite code — anyone who registers with it joins as a member.
-          </p>
-          <div className="flex items-center gap-3">
-            <code className="flex-1 px-3 py-2 rounded-lg text-sm font-mono font-semibold"
-                  style={{ background: t.dark ? 'rgba(255,255,255,0.06)' : '#f1f5f9',
-                           color: t.primary, border: `1px solid ${t.borderColor}` }}>
-              {me?.org_slug}
-            </code>
-            <button
-              onClick={() => { navigator.clipboard.writeText(me?.org_slug || ''); }}
-              className="px-3 py-2 rounded-lg text-xs font-semibold transition-opacity hover:opacity-70"
-              style={{ background: t.dark ? 'rgba(59,130,246,0.12)' : '#eff6ff',
-                       color: t.primary, border: `1px solid ${t.dark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.3)'}` }}>
-              Copy
-            </button>
+        {/* Invite section */}
+        {canInvite && (
+          <div className="rounded-xl p-5 mb-6" style={t.card}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs font-semibold" style={{ color: t.text3 }}>Invite teammates</p>
+                <p className="text-xs mt-0.5" style={{ color: t.text3 }}>
+                  Each link is single-use and expires in 48 hours
+                </p>
+              </div>
+              <button onClick={handleGenerate} disabled={generating}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold
+                                 transition-all hover:opacity-90 disabled:opacity-50"
+                      style={{ background: t.primary, color: 'white' }}>
+                <Icon name="plus" size={11} color="white" />
+                {generating ? 'Generating…' : 'Generate invite link'}
+              </button>
+            </div>
+
+            {/* Newly generated link */}
+            {newLink && (
+              <div className="mb-4 p-3 rounded-lg"
+                   style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: '#16a34a' }}>
+                  ✓ New invite link — share this once, it expires in 48 hours
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs px-2 py-1.5 rounded-lg break-all"
+                        style={{ background: t.dark ? 'rgba(255,255,255,0.06)' : '#f1f5f9',
+                                 color: t.text, border: `1px solid ${t.borderColor}` }}>
+                    {newLink}
+                  </code>
+                  <button onClick={() => handleCopy(newLink)}
+                          className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
+                          style={{ background: t.dark ? 'rgba(34,197,94,0.15)' : '#f0fdf4',
+                                   color: '#16a34a', border: '1px solid rgba(34,197,94,0.3)' }}>
+                    {copied ? '✓ Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Active invites */}
+            {invites.filter(i => i.status === 'active').length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold" style={{ color: t.text3 }}>Active invite links</p>
+                {invites.filter(i => i.status === 'active').map(inv => (
+                  <div key={inv.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
+                       style={{ background: t.dark ? 'rgba(255,255,255,0.03)' : '#f9fafb',
+                                border: `1px solid ${t.borderColor}` }}>
+                    <div>
+                      <p className="text-xs" style={{ color: t.text2 }}>
+                        Created by {inv.created_by_email}
+                      </p>
+                      <p className="text-xs" style={{ color: t.text3 }}>
+                        Expires {new Date(inv.expires_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <button onClick={() => handleRevoke(inv.id)} disabled={revoking === inv.id}
+                            className="text-xs font-semibold px-2 py-1 rounded-lg transition-all hover:opacity-80 disabled:opacity-40"
+                            style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444',
+                                     border: '1px solid rgba(239,68,68,0.2)' }}>
+                      {revoking === inv.id ? 'Revoking…' : 'Revoke'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {error && (
           <div className="mb-4 px-4 py-3 rounded-xl text-sm font-medium"
@@ -204,7 +290,7 @@ export default function Team() {
         )}
 
         <p className="text-xs mt-3 px-1" style={{ color: t.text3 }}>
-          {members.length} member{members.length !== 1 ? 's' : ''} · Invite code: <code style={{ color: t.primary }}>{me?.org_slug}</code>
+          {members.length} member{members.length !== 1 ? 's' : ''}
         </p>
       </div>
     </div>

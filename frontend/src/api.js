@@ -127,4 +127,12 @@ export const api = {
   getTrash:              ()      => get('/trash'),
   restoreQuestionnaire:  (id)    => post(`/questionnaires/${id}/restore`, {}),
   restoreDocument:       (id)    => post(`/knowledge/${id}/restore`, {}),
+
+  // Invites
+  createInvite:    ()   => post('/auth/invites', {}),
+  listInvites:     ()   => get('/auth/invites'),
+  revokeInvite:    (id) => fetch(`/api/auth/invites/${id}`, { ...OPTS, method: 'DELETE' }).then(r => r.json()),
+  validateInvite:  (token) => fetch(`/api/auth/invites/validate/${token}`).then(async r => {
+    const d = await r.json(); if (!r.ok) throw new Error(d.detail); return d
+  }),
 }

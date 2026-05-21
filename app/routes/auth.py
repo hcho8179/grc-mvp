@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import COOKIE_NAME, create_access_token, get_current_user, hash_password, verify_password, needs_rehash
 from app.db import get_db
-from app.models import Organization, User
+from app.models import Invite, Organization, User
 from app.services.audit import log_event
 from app.services.email import send_password_reset, send_verification_email
 
@@ -35,7 +35,7 @@ class RegisterRequest(BaseModel):
     password: str
     full_name: str
     org_name: str = ""
-    invite_slug: str = ""
+    invite_token: str = ""
 
 
 class LoginRequest(BaseModel):
@@ -84,10 +84,21 @@ async def register(request: Request, req: RegisterRequest, response: Response, d
         raise HTTPException(status_code=400, detail="Email already registered")
 
     new_org_id: int | None = None
-    if req.invite_slug:
-        org = db.query(Organization).filter(Organization.slug == req.invite_slug.strip()).first()
+    invite: Invite | None = None
+    if req.invite_token:
+        token_hash = hashlib.sha256(req.invite_token.strip().encode()).hexdigest()
+        invite = db.query(Invite).filter(Invite.token_hash == token_hash).first()
+        if not invite:
+            raise HTTPException(status_code=404, detail="Invite link not found or already used")
+        if invite.revoked_at:
+            raise HTTPException(status_code=400, detail="This invite link has been revoked")
+        if invite.used_at:
+            raise HTTPException(status_code=400, detail="This invite link has already been used")
+        if invite.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="This invite link has expired")
+        org = db.query(Organization).filter(Organization.id == invite.org_id).first()
         if not org:
-            raise HTTPException(status_code=404, detail="Invite code not found")
+            raise HTTPException(status_code=404, detail="Organisation not found")
         role = "member"
     else:
         if not req.org_name.strip():
@@ -113,6 +124,9 @@ async def register(request: Request, req: RegisterRequest, response: Response, d
     )
     db.add(user)
     db.flush()
+    if invite:
+        invite.used_at = datetime.now(timezone.utc)
+        invite.used_by_id = user.id
     log_event(db, org_id=org.id, user_id=user.id, user_email=user.email,
               action="auth.register", resource_type="auth",
               detail={"role": role, "org_name": org.name})
@@ -374,3 +388,109 @@ def resend_verification(
     verify_url = f"{get_settings().app_url}/verify-email?token={token}"
     enqueue("send_verification_email", {"email": current_user.email, "url": verify_url, "name": current_user.full_name or ""})
     return {"status": "ok"}
+
+
+# ── Invites ───────────────────────────────────────────────────────────────────
+
+@router.post("/invites")
+def create_invite(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owners and admins can create invites")
+
+    token = secrets.token_hex(32)  # 64-char hex, shown once
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+    invite = Invite(
+        org_id=current_user.org_id,
+        created_by_id=current_user.id,
+        created_by_email=current_user.email,
+        token_hash=token_hash,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
+    )
+    db.add(invite)
+    db.commit()
+    db.refresh(invite)
+
+    settings = get_settings()
+    return {
+        "id": invite.id,
+        "url": f"{settings.app_url}/invite/{token}",
+        "expires_at": invite.expires_at.isoformat(),
+    }
+
+
+@router.get("/invites")
+def list_invites(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owners and admins can view invites")
+
+    invites = (
+        db.query(Invite)
+        .filter(Invite.org_id == current_user.org_id)
+        .order_by(Invite.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    now = datetime.now(timezone.utc)
+    return [
+        {
+            "id": i.id,
+            "created_at": i.created_at.isoformat(),
+            "expires_at": i.expires_at.isoformat(),
+            "created_by_email": i.created_by_email,
+            "status": (
+                "used"    if i.used_at    else
+                "revoked" if i.revoked_at else
+                "expired" if i.expires_at < now else
+                "active"
+            ),
+        }
+        for i in invites
+    ]
+
+
+@router.delete("/invites/{invite_id}")
+def revoke_invite(
+    invite_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owners and admins can revoke invites")
+
+    invite = db.query(Invite).filter(
+        Invite.id == invite_id,
+        Invite.org_id == current_user.org_id,
+    ).first()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    if invite.used_at:
+        raise HTTPException(status_code=400, detail="Cannot revoke an already-used invite")
+
+    invite.revoked_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "revoked"}
+
+
+@router.get("/invites/validate/{token}")
+def validate_invite(token: str, db: Session = Depends(get_db)):
+    """Public endpoint — returns org name so the invite page can greet the user."""
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    invite = db.query(Invite).filter(Invite.token_hash == token_hash).first()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite link not found")
+    if invite.revoked_at:
+        raise HTTPException(status_code=400, detail="This invite link has been revoked")
+    if invite.used_at:
+        raise HTTPException(status_code=400, detail="This invite link has already been used")
+    if invite.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="This invite link has expired")
+
+    org = db.query(Organization).filter(Organization.id == invite.org_id).first()
+    return {"org_name": org.name if org else "Unknown", "expires_at": invite.expires_at.isoformat()}

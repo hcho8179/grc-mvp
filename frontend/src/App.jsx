@@ -23,6 +23,7 @@ import MyAssignments from './pages/MyAssignments'
 import KBHealth from './pages/KBHealth'
 import VerifyEmail from './pages/VerifyEmail'
 import Trash from './pages/Trash'
+import InvitePage from './pages/InvitePage'
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password"  element={<ResetPassword />} />
           <Route path="/verify-email"    element={<VerifyEmail />} />
+          <Route path="/invite/:token"   element={<InvitePage />} />
 
           {/* Protected app routes */}
           <Route element={

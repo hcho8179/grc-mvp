@@ -33,10 +33,10 @@ export default function Register() {
   const { t } = useTheme()
   const nav = useNavigate()
   const [params] = useSearchParams()
-  const prefillSlug = params.get('invite') || ''
+  const prefillToken = params.get('token') || ''
 
-  const [form, setForm] = useState({ full_name: '', email: '', password: '', org_name: '', invite_slug: prefillSlug })
-  const [joinMode, setJoinMode] = useState(!!prefillSlug)
+  const [form, setForm] = useState({ full_name: '', email: '', password: '', org_name: '', invite_token: prefillToken })
+  const [joinMode, setJoinMode] = useState(!!prefillToken)
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
 
@@ -50,7 +50,7 @@ export default function Register() {
     setLoading(true)
     try {
       await register({ email: form.email, password: form.password, full_name: form.full_name,
-                       org_name: joinMode ? '' : form.org_name, invite_slug: joinMode ? form.invite_slug : '' })
+                       org_name: joinMode ? '' : form.org_name, invite_token: joinMode ? form.invite_token : '' })
       nav('/', { replace: true })
     } catch (err) {
       setError(err.message)
@@ -136,12 +136,17 @@ export default function Register() {
               </div>
             ) : (
               <div>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: t.text2 }}>Invite code</label>
-                <input type="text" value={form.invite_slug} onChange={set('invite_slug')} required
-                       placeholder="acme-security-inc" className={inputCls} style={inputStyle}
-                       onFocus={e => e.target.style.boxShadow = `0 0 0 2px ${t.primary}40`}
-                       onBlur={e => e.target.style.boxShadow = 'none'} />
-                <p className="text-xs mt-1" style={{ color: t.text3 }}>Ask your workspace owner for the invite code</p>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: t.text2 }}>Invite link</label>
+                {form.invite_token ? (
+                  <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm"
+                       style={{ ...t.input, color: '#16a34a', border: '1px solid rgba(34,197,94,0.3)' }}>
+                    ✓ Invite link detected
+                  </div>
+                ) : (
+                  <p className="text-xs px-1" style={{ color: '#ef4444' }}>
+                    No invite link found. Ask your workspace admin to send you a new invite link.
+                  </p>
+                )}
               </div>
             )}
 
