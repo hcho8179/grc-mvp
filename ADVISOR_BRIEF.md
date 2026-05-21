@@ -17,26 +17,136 @@ Answering these is repetitive, slow, and usually falls on one person. The answer
 
 ---
 
-## What My Tool Does
+## Full Product Walkthrough
 
-1. **Upload** — The security team uploads the questionnaire as an Excel file.
-2. **Draft** — The system reads the company's own security policies and documentation, then drafts answers to each question automatically.
-3. **Review** — A human reviewer reads each drafted answer, edits if needed, then approves or flags it.
-4. **Export** — The completed questionnaire is exported back as an Excel file, ready to send to the customer.
+### Step 1 — Set up the knowledge base
 
-Unapproved answers are never included in the export — a human always has the final say.
+Before answering any questionnaires, the team uploads their company's security documentation:
+
+- Security policies (access control, incident response, encryption, etc.)
+- Compliance reports (SOC 2, ISO 27001, pen test results)
+- Any internal documents that describe how the company handles security
+
+The system processes each document and breaks it into searchable chunks. When a question comes in later, it finds the most relevant parts of these documents and uses them to draft an answer.
+
+**For new customers with no documents yet:** the tool includes 20 starter policy templates covering common SOC 2 and ISO 27001 topics so teams can get started immediately. A banner warns them these are generic templates and prompts them to upload their real policies.
 
 ---
 
-## Current Features
+### Step 2 — Upload a questionnaire
 
-- Upload questionnaires in Excel format (any column layout)
-- Separate columns for Yes/No answer and a longer evidence/explanation answer
-- Assign individual questions to specific team members (e.g. "this network question → assign to infra engineer")
-- Soft delete with a trash/restore system — nothing is permanently lost by accident
-- Audit log of every action (who approved what, when)
-- Knowledge base — upload your SOC 2 report, ISO policies, internal docs; the system uses these to draft answers
-- Starter policy templates included so new customers can get started immediately
+The reviewer uploads the customer's questionnaire as an Excel file. Because every company formats these differently, the tool handles this with a two-step column picker:
+
+1. **Preview** — the tool shows the first few rows of the file so the reviewer can see what's in each column
+2. **Map columns** — the reviewer clicks to mark which column is the question, which is the Yes/No answer column, and optionally which is the evidence/explanation column
+
+This means the tool works with any Excel layout — it doesn't require a specific template.
+
+---
+
+### Step 3 — Draft answers
+
+Once the questionnaire is set up, the reviewer clicks "Draft Answers." The system goes through every question and:
+
+1. Searches the knowledge base for the most relevant policy chunks
+2. Drafts a full answer (evidence/explanation)
+3. Drafts a short Yes/No/Partial/N-A answer for questionnaires that have a separate column for it
+4. Assigns a confidence score (High / Medium / Low) based on how closely the source documents matched the question
+5. Shows which specific policy documents it used as sources
+
+This usually takes 1–3 minutes for a full questionnaire.
+
+---
+
+### Step 4 — Review workspace
+
+This is where a human reviewer goes through each drafted answer. The workspace shows:
+
+- The original question text
+- The drafted answer (editable)
+- The short Yes/No answer
+- A confidence badge (High / Medium / Low)
+- The exact source documents and passages it pulled from, each with a match score
+- The system's reasoning for why it picked those sources
+
+For each question the reviewer can:
+
+- **Edit** the draft answer directly in the text box
+- **Approve** — marks the answer as final and includes it in the export
+- **Reject / Flag** — marks it as excluded; it will not appear in the export
+- **Re-draft** — asks the system to try again (useful if the first draft missed the point)
+- **Assign** — send the question to a specific team member (e.g. a network question goes to the infra engineer)
+- **Comment** — leave a note for teammates on a specific question
+
+The reviewer can also **bulk approve** all high-confidence answers at once to speed up the process.
+
+A progress counter at the top shows how many questions are approved out of the total.
+
+---
+
+### Step 5 — Export
+
+When the reviewer is ready, they click Export. The tool writes the approved answers back into the original Excel file layout — the customer's column structure is preserved. Unapproved, flagged, or edited-but-not-approved answers are never included.
+
+The exported file is named with the questionnaire name and today's date, ready to send.
+
+---
+
+### Other features
+
+**My Assignments**
+Team members see a personal inbox of all questions assigned to them across every questionnaire — question text, confidence, and a link directly to that questionnaire.
+
+**Trash and restore**
+Deleted questionnaires and documents go to a trash bin rather than being permanently removed. Owners and admins can restore them. Nothing is lost by accident.
+
+**Audit log**
+Every action is logged — who uploaded what, who approved which answer, who exported, who assigned a question to whom, and when. Full trail for compliance purposes.
+
+**Dashboard**
+Overview of all questionnaires, total questions answered, approval rate, average confidence score, and estimated time saved.
+
+**Knowledge base health**
+A page that shows how well the knowledge base is performing — which questions had low-confidence matches, which topics have gaps, and where uploading more documentation would help.
+
+**Team management**
+Owners can invite team members by email. Three roles:
+- **Owner** — full access, can manage billing and team
+- **Admin** — can manage questionnaires, knowledge base, and team members
+- **User** — can review and approve answers on questionnaires assigned to them
+
+---
+
+## Security Features Built Into the Tool Itself
+
+Since this is a security product, I want to be transparent about how the tool itself is secured:
+
+**Accounts and authentication**
+- Passwords require: 8+ characters, at least one uppercase letter, one number, and one symbol
+- Passwords are stored using Argon2id hashing — the current industry standard recommended by OWASP
+- Login sessions use secure, httponly cookies (tokens are not accessible to JavaScript, protecting against XSS attacks)
+- Login and registration are rate-limited (5 attempts per minute per IP) to block brute-force attacks
+- Email verification required on signup
+- Password reset via time-limited email token
+
+**Data protection**
+- Uploaded files (Excel questionnaires, policy documents) are stored in S3-compatible object storage — not in the database
+- All data is scoped to the organisation — no data from one customer is ever visible to another
+- Soft deletes only — data is never permanently destroyed without explicit action
+
+**Application security**
+- Security headers on every response: Content Security Policy, X-Frame-Options, Referrer-Policy, Permissions-Policy
+- HTTPS-only mode with HSTS when deployed to production
+- CORS restricted to the configured frontend domain only
+- File uploads: Excel files only, 20MB maximum size limit
+- All actions written to an immutable audit log
+
+**Monitoring**
+- Error tracking via Sentry (crash reports, never user data)
+- Automated test suite runs on every code change via CI pipeline
+
+**Coming soon**
+- MFA (authenticator app / TOTP) — opt-in per user, with org-level enforcement for admins
 
 ---
 
@@ -67,7 +177,7 @@ I'm thinking of charging per questionnaire or per seat per month. Which model ma
 
 ## What I Am Not Looking For
 
-- Technical feedback (the code, the AI, the infrastructure)
+- Technical feedback (the code, the infrastructure)
 - Design feedback
 
 I just want to know: **does this solve a real problem, and does the workflow make sense to someone who actually does this work?**
