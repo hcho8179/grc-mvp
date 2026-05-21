@@ -271,18 +271,3 @@ Owners 可通过 email 邀请 team members。
 哪种 pricing model 更符合 security teams 的真实预算方式？
 
 ---
-
-## 我目前不需要的反馈
-
-- Technical feedback（代码、基础设施）
-- Design feedback
-
-我现在最想知道的是：
-
-**这个产品是否真的解决了真实问题？以及 workflow 是否符合真实从业者的工作方式？**
-
----
-
-非常感谢你愿意花时间阅读。
-
-你作为真实 GRC analyst 的 perspective，正是我现在这个阶段最需要的。

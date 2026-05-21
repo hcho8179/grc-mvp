@@ -200,13 +200,3 @@ I'm thinking of charging per questionnaire or per seat per month. Which model ma
 
 ---
 
-## What I Am Not Looking For
-
-- Technical feedback (the code, the infrastructure)
-- Design feedback
-
-I just want to know: **does this solve a real problem, and does the workflow make sense to someone who actually does this work?**
-
----
-
-Thanks so much for taking the time — your perspective as a working GRC analyst is exactly what I need at this stage.
