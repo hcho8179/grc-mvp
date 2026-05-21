@@ -62,7 +62,7 @@ export default function QuestionnairsList() {
             </div>
             <p className="font-semibold mb-1" style={{ color: t.text }}>No questionnaires yet</p>
             <p className="text-sm mb-6" style={{ color: t.text3 }}>
-              Upload an Excel questionnaire and let AI draft all the answers.
+              Upload an Excel questionnaire and get draft answers for every question.
             </p>
             <button onClick={() => nav('/questionnaires/upload')}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"

@@ -31,7 +31,7 @@ function ScoreBadge({ score }) {
     ? 'This source closely matched the question — answer is well grounded.'
     : score >= 0.70
     ? 'This source partially matched — review the answer before approving.'
-    : 'Weak match — AI used loosely related text. Verify manually or assign to a subject expert.'
+    : 'Weak match — loosely related text found. Verify manually or assign to a subject expert.'
   return (
     <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-md flex-shrink-0 cursor-default"
           style={{ background: bg, color, border: `1px solid ${border}` }}
@@ -111,7 +111,7 @@ function ReasoningPanel({ reasoning, t }) {
                     border: `1px solid ${t.dark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.3)'}`,
                     color: t.text2 }}>
         <p className="font-semibold mb-1.5 flex items-center gap-1.5" style={{ color: '#d97706' }}>
-          <Icon name="spark" size={11} color="#d97706" /> AI Reasoning
+          <Icon name="spark" size={11} color="#d97706" /> Reasoning
         </p>
         {reasoning}
       </div>
@@ -357,7 +357,7 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
             </span>
           </div>
         )}
-        <label className="block text-xs font-semibold mb-2" style={{ color: t.text2 }}>AI Draft Answer</label>
+        <label className="block text-xs font-semibold mb-2" style={{ color: t.text2 }}>Draft Answer</label>
         <textarea
           value={answer}
           onChange={e => handleChange(e.target.value)}
@@ -408,7 +408,7 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
                      color: t.primary,
                      border: `1px solid ${t.dark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.3)'}` }}>
             <span className={regening ? 'spin inline-block text-base leading-none' : ''}>↻</span>
-            {regening ? 'Regenerating…' : 'Regenerate'} {!regening && <kbd className="kbd ml-1">R</kbd>}
+            {regening ? 'Re-drafting…' : 'Re-draft'} {!regening && <kbd className="kbd ml-1">R</kbd>}
           </button>
         </div>
       )}
@@ -432,7 +432,7 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
                      color: t.primary,
                      border: `1px solid ${t.dark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.3)'}` }}>
             <span className={regening ? 'spin inline-block' : ''}>↻</span>
-            {regening ? 'Regenerating…' : 'Regenerate'}
+            {regening ? 'Re-drafting…' : 'Re-draft'}
           </button>
         </div>
       )}
@@ -550,7 +550,7 @@ export default function QuestionnaireDetail() {
       const final = await api.getQuestionnaire(id)
       setData(final)
       setGenProgress(100)
-      showToast(`${res.updated} answers generated`, 'green')
+      showToast(`${res.updated} answers drafted`, 'green')
       initializedRef.current = false
     } catch {
       showToast('Generation failed', 'red')
@@ -564,7 +564,7 @@ export default function QuestionnaireDetail() {
     try {
       const updated = await api.regenerateQuestion(id, qId)
       setData(p => ({ ...p, questions: p.questions.map(q => q.id === qId ? updated : q) }))
-      showToast('Answer regenerated', 'blue')
+      showToast('Answer updated', 'blue')
     } catch { showToast('Regeneration failed', 'red') }
   }, [id])
 
@@ -724,7 +724,7 @@ export default function QuestionnaireDetail() {
                   style={{ background: t.primary }}>
             {generating
               ? <><span className="spin inline-block">↻</span> {genProgress < 90 ? `${genProgress}%` : 'Finishing…'}</>
-              : <><Icon name="spark" size={13} color="white" /> Generate Answers</>}
+              : <><Icon name="spark" size={13} color="white" /> Draft Answers</>}
           </button>
           {(() => {
             const allDone = toReview.length === 0 && questions.length > 0
@@ -838,7 +838,7 @@ export default function QuestionnaireDetail() {
                 </>
               ) : (
                 <p className="text-sm font-medium" style={{ color: t.text3 }}>
-                  Click Generate Answers to begin
+                  Click Draft Answers to begin
                 </p>
               )}
             </div>

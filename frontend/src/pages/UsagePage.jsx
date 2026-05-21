@@ -46,7 +46,7 @@ export default function UsagePage() {
       <div className="p-8 max-w-6xl mx-auto">
 
         <div className="mb-8">
-          <h1 className="text-2xl font-bold" style={{ color: t.text }}>AI Usage</h1>
+          <h1 className="text-2xl font-bold" style={{ color: t.text }}>Usage</h1>
           <p className="text-sm mt-0.5" style={{ color: t.text2 }}>
             {month_label} · Token and cost tracking
           </p>

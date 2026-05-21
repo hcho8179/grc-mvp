@@ -6,7 +6,7 @@ export function StatusBadge({ status }) {
     in_progress: { dot: '#f59e0b', text: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  border: 'rgba(245,158,11,0.2)',  label: 'In Progress', pulse: true },
     complete:    { dot: '#22c55e', text: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: 'rgba(34,197,94,0.2)',   label: 'Complete'    },
     pending:     { dot: '#64748b', text: '#94a3b8', bg: 'rgba(100,116,139,0.08)',border: 'rgba(100,116,139,0.15)',label: 'Pending'     },
-    generated:   { dot: '#3b82f6', text: '#3b82f6', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.2)',  label: 'Generated'   },
+    generated:   { dot: '#3b82f6', text: '#3b82f6', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.2)',  label: 'Drafted'     },
     approved:    { dot: '#22c55e', text: '#16a34a', bg: 'rgba(34,197,94,0.1)',   border: 'rgba(34,197,94,0.2)',   label: 'Approved'    },
     rejected:    { dot: '#ef4444', text: '#ef4444', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.2)',   label: 'Flagged'     },
   }

@@ -82,7 +82,7 @@ export default function UploadQuestionnaire() {
 
         <h1 className="text-2xl font-bold mb-1" style={{ color: t.text }}>Upload Questionnaire</h1>
         <p className="text-sm mb-8" style={{ color: t.text2 }}>
-          Upload an XLSX file and AI will draft answers for every question.
+          Upload an XLSX file and get draft answers for every question.
         </p>
 
         {/* Step indicator */}
@@ -283,7 +283,7 @@ export default function UploadQuestionnaire() {
             {questionCol !== null && answerCol === null && (
               <div className="px-4 py-3 rounded-xl text-xs font-medium"
                    style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', color: '#92400e' }}>
-                No answer column selected — AI answers will be written to a new column on export.
+                No answer column selected — answers will be written to a new column on export.
               </div>
             )}
 

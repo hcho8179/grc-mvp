@@ -2,6 +2,30 @@ import { useState } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { Icon } from '../components/Layout'
 
+function PasswordStrength({ password }) {
+  const checks = [
+    { label: '8+ characters',    ok: password.length >= 8 },
+    { label: 'Uppercase letter', ok: /[A-Z]/.test(password) },
+    { label: 'Number',           ok: /[0-9]/.test(password) },
+    { label: 'Symbol (!@#$…)',   ok: /[^A-Za-z0-9]/.test(password) },
+  ]
+  if (!password) return null
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+      {checks.map(({ label, ok }) => (
+        <span key={label} className="flex items-center gap-1 text-xs"
+              style={{ color: ok ? '#16a34a' : '#94a3b8' }}>
+          <span className="font-bold">{ok ? '✓' : '○'}</span> {label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function passwordValid(p) {
+  return p.length >= 8 && /[A-Z]/.test(p) && /[0-9]/.test(p) && /[^A-Za-z0-9]/.test(p)
+}
+
 export default function ChangePassword() {
   const { t } = useTheme()
   const [form, setForm] = useState({ current: '', next: '', confirm: '' })
@@ -13,8 +37,8 @@ export default function ChangePassword() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (form.next !== form.confirm) { setError("New passwords don't match"); return }
-    if (form.next.length < 8)       { setError("Password must be at least 8 characters"); return }
+    if (form.next !== form.confirm)  { setError("New passwords don't match"); return }
+    if (!passwordValid(form.next))   { setError("Password does not meet the requirements below"); return }
     setError('')
     setLoading(true)
     try {
@@ -73,8 +97,7 @@ export default function ChangePassword() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {[
-                  { label: 'Current password', key: 'current', placeholder: '••••••••' },
-                  { label: 'New password',     key: 'next',    placeholder: 'Min. 8 characters' },
+                  { label: 'Current password',     key: 'current', placeholder: '••••••••' },
                   { label: 'Confirm new password', key: 'confirm', placeholder: 'Repeat new password' },
                 ].map(({ label, key, placeholder }) => (
                   <div key={key}>
@@ -88,6 +111,17 @@ export default function ChangePassword() {
                            onBlur={e => e.target.style.boxShadow = 'none'} />
                   </div>
                 ))}
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: t.text2 }}>
+                    New password
+                  </label>
+                  <input type="password" value={form.next} onChange={set('next')}
+                         required placeholder="Min. 8 characters"
+                         className={inputCls} style={{ ...t.input }}
+                         onFocus={e => e.target.style.boxShadow = `0 0 0 2px ${t.primary}40`}
+                         onBlur={e => e.target.style.boxShadow = 'none'} />
+                  <PasswordStrength password={form.next} />
+                </div>
 
                 <button type="submit" disabled={loading}
                         className="w-full py-2.5 rounded-xl text-sm font-semibold text-white

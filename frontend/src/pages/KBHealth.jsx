@@ -86,7 +86,7 @@ export default function KBHealth() {
           </div>
           <p className="font-semibold text-lg mb-2" style={{ color: t.text }}>No data yet</p>
           <p className="text-sm max-w-xs" style={{ color: t.text3 }}>
-            Generate answers on at least one questionnaire first — this page analyses the results.
+            Draft answers on at least one questionnaire first — this page analyses the results.
           </p>
         </div>
       ) : (

@@ -47,7 +47,7 @@ export default function KnowledgeBase() {
           <div>
             <h1 className="text-2xl font-bold" style={{ color: t.text }}>Knowledge Base</h1>
             <p className="text-sm mt-0.5" style={{ color: t.text2 }}>
-              Policies and documents that power AI-generated answers
+              Policies and documents that power suggested answers
             </p>
           </div>
           <button onClick={() => nav('/knowledge/upload')}
@@ -67,7 +67,7 @@ export default function KnowledgeBase() {
                 You're running on starter templates
               </p>
               <p className="text-xs mb-3" style={{ color: '#b45309' }}>
-                Your AI answers are based on generic policy templates, not your company's actual policies.
+                Your answers are based on generic policy templates, not your company's actual policies.
                 Upload your real security policies to get accurate, company-specific answers.
               </p>
               <button onClick={() => nav('/knowledge/upload')}

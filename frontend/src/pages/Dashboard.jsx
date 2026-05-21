@@ -54,7 +54,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: t.text }}>Dashboard</h1>
-            <p className="text-sm mt-0.5" style={{ color: t.text2 }}>AI-powered security questionnaire automation</p>
+            <p className="text-sm mt-0.5" style={{ color: t.text2 }}>Security questionnaire automation</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => nav('/knowledge')}
@@ -75,7 +75,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatCard label="Total Questionnaires" value={total_questionnaires} sub="All time" icon="clipboard" accent="#3b82f6" />
           <StatCard label="Answers Generated"    value={total_answered}        sub={`${total_approved} approved`} icon="check" accent="#22c55e" />
-          <StatCard label="Avg Confidence"       value={`${avg_conf_pct}%`}    sub="AI match score" icon="spark" accent={avg_conf_pct >= 70 ? '#22c55e' : '#f59e0b'} />
+          <StatCard label="Avg Confidence"       value={`${avg_conf_pct}%`}    sub="Match score" icon="spark" accent={avg_conf_pct >= 70 ? '#22c55e' : '#f59e0b'} />
           <StatCard label="Time Saved"           value={`${hours_saved}h`}     sub="@ 8 min per question" icon="clock" accent="#8b5cf6" />
         </div>
 
@@ -138,7 +138,7 @@ export default function Dashboard() {
 
         {total_cost > 0 && (
           <p className="text-xs mt-3 text-right" style={{ color: t.text3 }}>
-            Total AI cost: ${total_cost.toFixed(4)}
+            Total cost: ${total_cost.toFixed(4)}
           </p>
         )}
       </div>

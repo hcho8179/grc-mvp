@@ -19,6 +19,17 @@ from app.services.email import send_password_reset, send_verification_email
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+def _check_password(password: str) -> None:
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if not re.search(r'[A-Z]', password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter")
+    if not re.search(r'[0-9]', password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one number")
+    if not re.search(r'[^A-Za-z0-9]', password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one symbol (e.g. !@#$)")
+
+
 class RegisterRequest(BaseModel):
     email: str
     password: str
@@ -68,8 +79,7 @@ def _user_payload(user: User, org: Organization) -> dict:
 async def register(request: Request, req: RegisterRequest, response: Response, db: Session = Depends(get_db)):
     if not req.email.strip() or "@" not in req.email:
         raise HTTPException(status_code=400, detail="Valid email required")
-    if len(req.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    _check_password(req.password)
     if db.query(User).filter(User.email == req.email.lower().strip()).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -210,8 +220,7 @@ def forgot_password(request: Request, req: ForgotPasswordRequest, db: Session = 
 @router.post("/reset-password")
 @limiter.limit("5/minute")
 def reset_password(request: Request, req: ResetPasswordRequest, db: Session = Depends(get_db)):
-    if len(req.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    _check_password(req.new_password)
 
     token_hash = _hash_token(req.token)
     user = db.query(User).filter(User.reset_token_hash == token_hash).first()
@@ -237,8 +246,7 @@ def change_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if len(req.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    _check_password(req.new_password)
 
     if not verify_password(req.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Current password is incorrect")

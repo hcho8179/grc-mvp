@@ -55,7 +55,7 @@ export default function UploadKnowledge() {
 
         <h1 className="text-2xl font-bold mb-1" style={{ color: t.text }}>Upload Document</h1>
         <p className="text-sm mb-8" style={{ color: t.text2 }}>
-          Add security policies and documentation to power AI answer generation.
+          Add security policies and documentation to improve answer accuracy.
         </p>
 
         {error && (
@@ -119,7 +119,7 @@ export default function UploadKnowledge() {
                           border: `1px solid ${t.borderColor}` }}>
               <p className="text-xs leading-relaxed" style={{ color: t.text3 }}>
                 <strong style={{ color: t.text2 }}>What happens:</strong> The document is parsed, split into chunks, and embedded.
-                Those chunks are retrieved when AI generates answers to questionnaire questions.
+                Those chunks are retrieved when generating answers to questionnaire questions.
               </p>
             </div>
 

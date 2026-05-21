@@ -71,7 +71,7 @@ const NAV_SECTIONS = [
     label: 'Analytics',
     adminOnly: true,
     items: [
-      { to: '/admin/usage',             label: 'AI Usage',       icon: 'bolt',      match: (p) => p === '/admin/usage' },
+      { to: '/admin/usage',             label: 'Usage',          icon: 'bolt',      match: (p) => p === '/admin/usage' },
       { to: '/admin/audit',             label: 'Audit Log',      icon: 'clock',     match: (p) => p === '/admin/audit' },
       { to: '/trash',                   label: 'Trash',          icon: 'doc',       match: (p) => p === '/trash',        adminOnly: true },
       { to: '/admin/team',              label: 'Team',           icon: 'user',      match: (p) => p === '/admin/team'  },

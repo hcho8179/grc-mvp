@@ -9,7 +9,7 @@ const ACTION_META = {
   'questionnaire.uploaded':  { label: 'Questionnaire uploaded',  color: '#8b5cf6', dot: '#8b5cf6' },
   'questionnaire.exported':  { label: 'Questionnaire exported',  color: '#8b5cf6', dot: '#8b5cf6' },
   'questionnaire.deleted':   { label: 'Questionnaire deleted',   color: '#ef4444', dot: '#ef4444' },
-  'answer.generated':        { label: 'AI answer generated',     color: '#22c55e', dot: '#22c55e' },
+  'answer.generated':        { label: 'Answer drafted',          color: '#22c55e', dot: '#22c55e' },
   'question.approved':       { label: 'Answer approved',         color: '#22c55e', dot: '#22c55e' },
   'question.bulk_approved':  { label: 'Bulk approved',           color: '#22c55e', dot: '#22c55e' },
   'question.rejected':       { label: 'Answer flagged',          color: '#ef4444', dot: '#ef4444' },

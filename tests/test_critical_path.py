@@ -82,7 +82,7 @@ def _register(client, email=None, org=None):
     org = org or f"Org {email}"
     r = client.post("/api/auth/register", json={
         "email": email,
-        "password": "password123",
+        "password": "Password1!",
         "full_name": "Test User",
         "org_name": org,
     })
@@ -137,7 +137,7 @@ class TestRegister:
         _register(client, email=email)
         r = client.post("/api/auth/register", json={
             "email": email,
-            "password": "password123",
+            "password": "Password1!",
             "full_name": "Dup",
             "org_name": "Dup Org",
         })
