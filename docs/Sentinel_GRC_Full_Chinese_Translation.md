@@ -1,8 +1,8 @@
 # Additional Strategic Positioning（额外战略定位）
 
-Sentinel GRC 是一个 AI-native 的 organizational security memory 与 questionnaire workflow platform，面向成长中的 B2B SaaS 公司。
+Sentinel GRC 是一个 organizational security memory 与 questionnaire workflow platform，面向成长中的 B2B SaaS 公司。
 
-这个平台并不只是另一个 AI 自动填表工具。长期目标是通过 approved answers、review history、evidence linkage、stale-answer detection 以及 operational trust workflows，帮助组织随着时间不断积累可复用的 institutional security knowledge。
+这个平台并不只是另一个自动填表工具。长期目标是通过 approved answers、review history、evidence linkage、stale-answer detection 以及 operational trust workflows，帮助组织随着时间不断积累可复用的 institutional security knowledge。
 
 核心问题不仅仅是“更快回答问卷”，而是减少 duplicated work、inconsistent responses、scattered knowledge，以及 enterprise security review 过程中的 operational bottlenecks。
 
@@ -23,6 +23,20 @@ Sentinel GRC 是一个 AI-native 的 organizational security memory 与 question
 - “Describe your incident response process.”
 
 回答这些问题通常重复、缓慢，而且往往落在一个人身上处理。实际上，不同 questionnaires 的答案大部分都差不多，只是换了不同说法。
+
+---
+
+## 目标客户
+
+两类客户，同样的问题，不同的切入方式。
+
+**类型一 — 拥有内部安全团队的公司**
+处于 B 轮至 C 轮阶段的 SaaS 公司，内部有专职的 GRC 分析师或安全工程师。他们定期收到安全问卷，有时每月多达 5–10 份，分析师是整个流程的瓶颈。这类公司直接购买 Sentinel 自行使用。CISO 或 GRC 分析师既是购买决策者，也是日常使用者。
+
+**类型二 — 没有内部安全团队的公司**
+规模较小的公司（10–100 人），没有专职安全人员。当大客户发来安全问卷时，他们会聘请 GRC 咨询公司代为处理。咨询公司用 Sentinel 同时服务所有客户——一个工具，多个客户 workspace，每个完全隔离。咨询公司是购买方，他们的客户是最终受益者。
+
+两类客户面对的是同一个痛点，区别在于谁在链条中感受最深，谁来做购买决定。
 
 ---
 
@@ -150,6 +164,9 @@ Owners 可通过 email 邀请 team members。
 - **Admin** — 可管理 questionnaires、knowledge base 与 team members
 - **User** — 可审核与 approve 分配给自己的 questionnaires
 
+**Answer library（答案库）**
+每一个被 approve 的答案都会自动保存到一个可搜索的答案库中。当未来的 questionnaire 出现相似问题时，系统会自动把之前 approved 的答案作为建议浮现出来，并附带 match score 显示相似程度。每条答案都会记录被复用了多少次。答案按类别归类（access control、encryption、incident response 等），并支持关键词搜索。答案库会随使用时间不断积累：团队做的 questionnaires 越多，下一次就越快。
+
 ---
 
 ## 产品自身的 Security Features
@@ -199,7 +216,6 @@ Owners 可通过 email 邀请 team members。
 - Email notifications
 - SSO / SAML（Google Workspace、Okta、Azure AD）
 - Org-level admin settings
-- Answer library
 - Answer version history
 - Multi-sheet Excel support
 - Word 与 PDF questionnaire upload

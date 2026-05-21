@@ -1,8 +1,8 @@
 # Additional Strategic Positioning
 
-Sentinel GRC is an AI-native organizational security memory and questionnaire workflow platform for growing B2B SaaS companies.
+Sentinel GRC is a security memory and questionnaire workflow platform for growing B2B SaaS companies.
 
-The platform is not intended to be just another AI autofill tool. The longer-term goal is to help organizations accumulate reusable institutional security knowledge over time through approved answers, review history, evidence linkage, stale-answer detection, and operational trust workflows.
+The platform is not intended to be just another autofill tool. The longer-term goal is to help organizations accumulate reusable institutional security knowledge over time through approved answers, review history, evidence linkage, stale-answer detection, and operational trust workflows.
 
 The core problem is not only answering questionnaires faster, but reducing duplicated work, inconsistent responses, scattered knowledge, and operational bottlenecks during enterprise security reviews.
 
@@ -23,6 +23,20 @@ When a vendor wants to sell to a large company, the company often sends a securi
 - "Describe your incident response process."
 
 Answering these is repetitive, slow, and usually falls on one person. The answers are almost always the same across questionnaires, just phrased differently each time.
+
+---
+
+## Who This Is For
+
+There are two types of customers, both with the same problem approached differently.
+
+**Type 1 — Companies with an internal security team**
+Series B/C SaaS companies with a dedicated GRC analyst or security engineer in-house. They receive security questionnaires regularly — sometimes 5–10 per month — and the analyst is the bottleneck. They buy Sentinel directly and use it themselves. The CISO or GRC analyst is both the buyer and the day-to-day user.
+
+**Type 2 — Companies with no internal security team**
+Smaller companies (10–100 employees) with no dedicated security person. When a questionnaire arrives from a big prospect, they hire a GRC consulting firm to handle it on their behalf. The consulting firm uses Sentinel across all their clients — one tool, many client workspaces, each fully isolated. The consulting firm is the buyer; their clients are the beneficiaries.
+
+Both types feel the same pain. The difference is who in the chain feels it most directly and who makes the buying decision.
 
 ---
 
@@ -124,6 +138,9 @@ Owners can invite team members by email. Three roles:
 - **Admin** — can manage questionnaires, knowledge base, and team members
 - **User** — can review and approve answers on questionnaires assigned to them
 
+**Answer library**
+Every answer that gets approved is automatically saved to a searchable library. When a similar question appears in a future questionnaire, the system surfaces the previously approved answer as a suggestion — with a match score showing how closely it fits. Each entry tracks how many times it has been reused. Answers are grouped by category (access control, encryption, incident response, etc.) and are searchable by keyword. The library compounds over time: the more questionnaires the team completes, the faster future ones go.
+
 ---
 
 ## Security Features Built Into the Tool Itself
@@ -166,7 +183,6 @@ Since this is a security product, I want to be transparent about how the tool it
 - Email notifications — alerts when a question is assigned to you, when a questionnaire is ready for review
 - SSO / SAML — single sign-on via Google Workspace, Okta, Azure AD
 - Org-level admin settings — force MFA for all members, configure data retention period
-- Answer library — previously approved answers suggested automatically when a similar question appears in a future questionnaire
 - Answer version history — full edit trail showing who changed an answer and what it said before
 - Multi-sheet Excel support — questionnaires that span multiple tabs in the same file
 - Word and PDF questionnaire upload — not just Excel files
