@@ -1,54 +1,55 @@
 {% extends "base.html" %}
-{% block title %}Upload Questionnaire — GRC MVP{% endblock %}
+{% block title %}Upload Questionnaire — Sentinel{% endblock %}
 {% block content %}
-
 <div class="mb-6">
-  <a href="/questionnaires" class="text-sm text-gray-500 hover:text-gray-700">&larr; Questionnaires</a>
+  <a href="/questionnaires" class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-300 transition-colors">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+    All Questionnaires
+  </a>
 </div>
-
-<h1 class="text-2xl font-bold mb-6">Upload Questionnaire</h1>
-
-{% if error %}
-<div class="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded mb-4">
-  {{ error }}
+<div class="max-w-lg">
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] mb-2 text-cyan-400">New</p>
+  <h1 class="text-4xl font-black tracking-tight text-white leading-none mb-1">Upload Questionnaire</h1>
+  <p class="text-slate-500 text-sm mb-8">Upload an Excel file and map the question and answer columns.</p>
+  {% if error %}
+  <div class="flex items-start gap-3 bg-rose-400/10 border border-rose-400/20 text-rose-400 text-sm px-4 py-3.5 rounded-2xl mb-6">
+    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
+    {{ error }}
+  </div>
+  {% endif %}
+  <div class="bg-white/[0.04] backdrop-blur-sm border border-cyan-500/10 rounded-2xl p-7">
+    <form method="post" action="/questionnaires/upload" enctype="multipart/form-data" class="space-y-5">
+      <div>
+        <label class="block text-sm font-bold text-slate-300 mb-2">Questionnaire name <span class="text-rose-400">*</span></label>
+        <input type="text" name="name" required placeholder="e.g. MegaBank Vendor Assessment Q2 2026"
+               class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-medium text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/30 hover:border-white/20 transition-colors">
+      </div>
+      <div>
+        <label class="block text-sm font-bold text-slate-300 mb-2">Customer name</label>
+        <input type="text" name="customer_name" placeholder="e.g. MegaBank"
+               class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-medium text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/30 hover:border-white/20 transition-colors">
+        <p class="text-xs text-slate-600 mt-2">Used to suggest matching templates on the next screen.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-bold text-slate-300 mb-2">File <span class="text-rose-400">*</span></label>
+        <div class="border-2 border-dashed border-white/10 rounded-2xl p-6 hover:border-cyan-500/30 hover:bg-cyan-500/[0.03] transition-all cursor-pointer">
+          <div class="flex flex-col items-center text-center mb-4">
+            <div class="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(6,182,212,0.15)]">
+              <svg class="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
+            </div>
+            <p class="text-sm font-bold text-slate-400">Drop your XLSX file here</p>
+            <p class="text-xs text-slate-600 mt-1">Excel only · You'll map columns on the next screen</p>
+          </div>
+          <input type="file" name="file" accept=".xlsx" required
+                 class="block w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-cyan-600 file:text-white hover:file:bg-cyan-500 cursor-pointer file:transition-colors file:shadow-[0_0_10px_rgba(6,182,212,0.3)]">
+        </div>
+      </div>
+      <button type="submit"
+              class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-[0_0_20px_rgba(6,182,212,0.35)] hover:shadow-[0_0_30px_rgba(6,182,212,0.55)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-150">
+        Continue
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg>
+      </button>
+    </form>
+  </div>
 </div>
-{% endif %}
-
-<div class="bg-white border border-gray-200 rounded p-6 max-w-lg">
-  <form method="post" action="/questionnaires/upload" enctype="multipart/form-data" class="space-y-5">
-
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Questionnaire name <span class="text-red-500">*</span>
-      </label>
-      <input type="text" name="name" required placeholder="e.g. MegaBank Vendor Assessment Q2 2026"
-             class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-    </div>
-
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-1">Customer name</label>
-      <input type="text" name="customer_name" placeholder="e.g. MegaBank"
-             class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-    </div>
-
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        File <span class="text-red-500">*</span>
-      </label>
-      <input type="file" name="file" accept=".xlsx" required
-             class="block w-full text-sm text-gray-700
-                    file:mr-3 file:py-2 file:px-4 file:rounded
-                    file:border-0 file:text-sm file:font-medium
-                    file:bg-blue-50 file:text-blue-700
-                    hover:file:bg-blue-100 cursor-pointer">
-      <p class="text-xs text-gray-400 mt-1">XLSX only. You'll map columns on the next screen.</p>
-    </div>
-
-    <button type="submit"
-            class="bg-blue-600 text-white text-sm px-5 py-2 rounded hover:bg-blue-700 font-medium">
-      Continue
-    </button>
-  </form>
-</div>
-
 {% endblock %}

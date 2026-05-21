@@ -4,43 +4,197 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Sentinel{% endblock %}</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['Inter','ui-sans-serif','system-ui','sans-serif'] } } }
+    }
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
-    .htmx-indicator { display: none; }
-    .htmx-request .htmx-indicator { display: inline; }
-    .htmx-request.htmx-indicator { display: inline; }
+    .htmx-indicator{display:none}
+    .htmx-request .htmx-indicator{display:inline}
+    .htmx-request.htmx-indicator{display:inline}
+    [x-cloak]{display:none!important}
+    *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:99px}
+    ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.15)}
   </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen">
 
-  <nav class="bg-white border-b border-slate-200 px-6 py-0 flex items-center gap-0 h-14">
-    <a href="/" class="flex items-center gap-2 mr-8 text-indigo-700 font-bold text-lg tracking-tight">
-      🛡️ Sentinel
-    </a>
+{% set path = request.url.path %}
 
-    {% set path = request.url.path %}
-    <a href="/questionnaires"
-       class="h-14 flex items-center px-4 text-sm border-b-2 transition-colors
-              {% if path.startswith('/questionnaires') %}border-indigo-600 text-indigo-700 font-medium{% else %}border-transparent text-slate-600 hover:text-indigo-600{% endif %}">
-      Questionnaires
-    </a>
-    <a href="/knowledge"
-       class="h-14 flex items-center px-4 text-sm border-b-2 transition-colors
-              {% if path.startswith('/knowledge') %}border-indigo-600 text-indigo-700 font-medium{% else %}border-transparent text-slate-600 hover:text-indigo-600{% endif %}">
-      Knowledge Base
-    </a>
-    <a href="/admin/usage"
-       class="h-14 flex items-center px-4 text-sm border-b-2 transition-colors
-              {% if path.startswith('/admin') %}border-indigo-600 text-indigo-700 font-medium{% else %}border-transparent text-slate-600 hover:text-indigo-600{% endif %}">
-      Usage
-    </a>
-  </nav>
+{# ── Derive section color for orbs, sidebar active, heading accent ── #}
+{% if path == '/' %}
+  {% set sec = 'teal' %}
+  {% set orb1 = 'rgba(20,184,166,0.07)' %}
+  {% set orb2 = 'rgba(6,182,212,0.05)' %}
+{% elif path == '/questionnaires/templates' %}
+  {% set sec = 'pink' %}
+  {% set orb1 = 'rgba(236,72,153,0.07)' %}
+  {% set orb2 = 'rgba(244,63,94,0.05)' %}
+{% elif path.startswith('/questionnaires') %}
+  {% set sec = 'cyan' %}
+  {% set orb1 = 'rgba(6,182,212,0.07)' %}
+  {% set orb2 = 'rgba(59,130,246,0.05)' %}
+{% elif path.startswith('/knowledge') %}
+  {% set sec = 'emerald' %}
+  {% set orb1 = 'rgba(16,185,129,0.07)' %}
+  {% set orb2 = 'rgba(20,184,166,0.05)' %}
+{% elif path.startswith('/answers') %}
+  {% set sec = 'orange' %}
+  {% set orb1 = 'rgba(249,115,22,0.07)' %}
+  {% set orb2 = 'rgba(234,179,8,0.05)' %}
+{% elif path.startswith('/admin') %}
+  {% set sec = 'violet' %}
+  {% set orb1 = 'rgba(139,92,246,0.07)' %}
+  {% set orb2 = 'rgba(99,102,241,0.05)' %}
+{% else %}
+  {% set sec = 'cyan' %}
+  {% set orb1 = 'rgba(6,182,212,0.07)' %}
+  {% set orb2 = 'rgba(59,130,246,0.05)' %}
+{% endif %}
 
-  <main class="max-w-7xl mx-auto px-6 py-8">
-    {% block content %}{% endblock %}
-  </main>
+<body class="bg-[#0b0c14] text-white min-h-screen font-sans flex">
+
+  <!-- Section-tinted ambient orbs -->
+  <div class="fixed top-0 right-0 w-[650px] h-[650px] rounded-full blur-[150px] pointer-events-none -z-0"
+       style="background: {{ orb1 }}"></div>
+  <div class="fixed bottom-0 left-0 w-[500px] h-[500px] rounded-full blur-[130px] pointer-events-none -z-0"
+       style="background: {{ orb2 }}"></div>
+  <!-- Subtle top-center ambient -->
+  <div class="fixed top-1/3 left-1/2 -translate-x-1/2 w-[800px] h-[300px] rounded-full blur-[160px] pointer-events-none -z-0 opacity-30"
+       style="background: {{ orb1 }}"></div>
+
+  <!-- ── Sidebar ────────────────────────────────────────────── -->
+  <aside class="w-58 shrink-0 h-screen sticky top-0 flex flex-col z-20
+                bg-black/50 backdrop-blur-xl border-r border-white/[0.06]"
+         style="width:226px">
+
+    <!-- Logo -->
+    <div class="px-4 pt-5 pb-5 border-b border-white/[0.06]">
+      <a href="/" class="flex items-center gap-2.5 group">
+        <div class="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200
+                    bg-gradient-to-br from-cyan-500 via-violet-500 to-rose-500
+                    shadow-[0_0_18px_rgba(139,92,246,0.45)]
+                    group-hover:shadow-[0_0_28px_rgba(139,92,246,0.65)] group-hover:scale-105">
+          <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+            <path fill-rule="evenodd" d="M12.516 2.17a.75.75 0 0 0-1.032 0 11.209 11.209 0 0 1-7.877 3.08.75.75 0 0 0-.722.515A12.74 12.74 0 0 0 2.25 9.75c0 5.942 4.064 10.933 9.563 12.348a.749.749 0 0 0 .374 0c5.499-1.415 9.563-6.406 9.563-12.348 0-1.39-.223-2.73-.635-3.985a.75.75 0 0 0-.722-.516l-.143.001c-2.996 0-5.717-1.17-7.704-3.08Z" clip-rule="evenodd"/>
+          </svg>
+        </div>
+        <div>
+          <p class="font-black text-white text-sm tracking-tight leading-none">Sentinel</p>
+          <p class="text-[10px] text-slate-600 font-medium mt-0.5">GRC Automation</p>
+        </div>
+      </a>
+    </div>
+
+    <!-- Nav -->
+    <nav class="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
+
+      <a href="/questionnaires"
+         class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm transition-all duration-150
+                {% if path.startswith('/questionnaires') and path != '/questionnaires/templates' %}
+                  bg-cyan-500/10 text-cyan-300 font-semibold border border-cyan-500/20
+                  shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]
+                {% else %}
+                  text-slate-500 font-medium hover:text-slate-200 hover:bg-white/5
+                {% endif %}">
+        <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z"/>
+        </svg>
+        Questionnaires
+      </a>
+
+      <a href="/knowledge"
+         class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm transition-all duration-150
+                {% if path.startswith('/knowledge') %}
+                  bg-emerald-500/10 text-emerald-300 font-semibold border border-emerald-500/20
+                  shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]
+                {% else %}
+                  text-slate-500 font-medium hover:text-slate-200 hover:bg-white/5
+                {% endif %}">
+        <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/>
+        </svg>
+        Knowledge Base
+      </a>
+
+      <a href="/answers/library"
+         class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm transition-all duration-150
+                {% if path.startswith('/answers') %}
+                  bg-orange-500/10 text-orange-300 font-semibold border border-orange-500/20
+                  shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]
+                {% else %}
+                  text-slate-500 font-medium hover:text-slate-200 hover:bg-white/5
+                {% endif %}">
+        <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z"/>
+        </svg>
+        Answer Library
+      </a>
+
+      <a href="/questionnaires/templates"
+         class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm transition-all duration-150
+                {% if path == '/questionnaires/templates' %}
+                  bg-pink-500/10 text-pink-300 font-semibold border border-pink-500/20
+                  shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]
+                {% else %}
+                  text-slate-500 font-medium hover:text-slate-200 hover:bg-white/5
+                {% endif %}">
+        <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z"/>
+        </svg>
+        Templates
+      </a>
+
+      <div class="h-px bg-white/[0.05] my-3 mx-2"></div>
+
+      <a href="/admin/usage"
+         class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm transition-all duration-150
+                {% if path.startswith('/admin') %}
+                  bg-violet-500/10 text-violet-300 font-semibold border border-violet-500/20
+                  shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]
+                {% else %}
+                  text-slate-500 font-medium hover:text-slate-200 hover:bg-white/5
+                {% endif %}">
+        <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/>
+        </svg>
+        AI Usage
+      </a>
+    </nav>
+
+    <!-- Footer -->
+    <div class="px-4 py-4 border-t border-white/[0.06]">
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(139,92,246,0.4)]">
+          <svg class="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-7 9a7 7 0 1 1 14 0H3z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-xs text-slate-300 font-semibold leading-none">Workspace</p>
+          <p class="text-[10px] text-slate-600 mt-0.5">Free tier</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ──────────────────────────────────────────────── -->
+  <div class="flex-1 flex flex-col min-h-screen overflow-hidden relative z-10">
+    <main class="flex-1 overflow-y-auto">
+      <div class="px-8 py-8 max-w-6xl mx-auto">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
 
 </body>
 </html>

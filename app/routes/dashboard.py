@@ -15,7 +15,7 @@ templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, db: Session = Depends(get_db)):
-    total_questionnaires = db.query(Questionnaire).count()
+    total_questionnaires = db.query(Questionnaire).filter(Questionnaire.deleted_at == None).count()
 
     answered_statuses = [QuestionStatus.generated, QuestionStatus.approved]
     total_answered = (
@@ -42,6 +42,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
 
     recent = (
         db.query(Questionnaire)
+        .filter(Questionnaire.deleted_at == None)
         .order_by(Questionnaire.created_at.desc())
         .limit(5)
         .all()

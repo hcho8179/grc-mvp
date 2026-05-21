@@ -31,9 +31,15 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "pydantic-settings>=2.3.0",
 
+    # Auth
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+
     # Utilities
     "tiktoken>=0.7.0",       # token counting for chunking
     "numpy>=1.26.0",
+    "sentry-sdk[fastapi]>=2.0.0",
+    "boto3>=1.34.0",
 ]
 
 [project.optional-dependencies]

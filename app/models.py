@@ -13,6 +13,7 @@ import enum
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Enum,
@@ -31,6 +32,51 @@ from sqlalchemy.sql import func
 from app.db import Base
 
 EMBEDDING_DIM = 1024  # voyage-3; change to 1536 if switching to text-embedding-3-small
+
+
+# ---------------------------------------------------------------------------
+# Organization  (tenant)
+# ---------------------------------------------------------------------------
+
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    name = Column(String(256), nullable=False)
+    slug = Column(String(64), unique=True, index=True, nullable=False)
+
+    users = relationship("User", back_populates="org", cascade="all, delete-orphan")
+
+
+# ---------------------------------------------------------------------------
+# User
+# ---------------------------------------------------------------------------
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    email = Column(String(256), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(256), nullable=False)
+    full_name = Column(String(256), nullable=True)
+    role = Column(String(32), default="member", nullable=False)  # owner | admin | member
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    org = relationship("Organization", back_populates="users")
+
+    # Email verification
+    email_verified             = Column(Boolean, default=False, nullable=False, server_default="false")
+    verification_token_hash    = Column(String(256), nullable=True, index=True)
+    verification_token_expires = Column(DateTime(timezone=True), nullable=True)
+
+    # Password reset — token stored as SHA-256 hash, never plaintext
+    reset_token_hash    = Column(String(256), nullable=True, index=True)
+    reset_token_expires = Column(DateTime(timezone=True), nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +99,10 @@ class Document(Base):
     file_type = Column(Enum(FileType), nullable=False)
     chunk_count = Column(Integer, default=0, nullable=False)
     content_hash = Column(String(64), nullable=True, unique=True, index=True)
+    is_starter = Column(Boolean, default=False, nullable=False, server_default="false")
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
 
     chunks = relationship(
         "KnowledgeChunk",
@@ -110,6 +160,23 @@ class QuestionnaireStatus(str, enum.Enum):
     complete = "complete"       # all answers approved and exported
 
 
+class QuestionnaireTemplate(Base):
+    """Saved layout + format for a customer's questionnaire format."""
+    __tablename__ = "questionnaire_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    name = Column(String(256), nullable=False)
+    customer_name = Column(String(256), nullable=True, index=True)
+    question_col = Column(Integer, nullable=False)   # 0-based
+    answer_col = Column(Integer, nullable=True)      # 0-based
+    format_config = Column(JSON, nullable=True)      # merged_cells, column_widths, row_heights
+    times_used = Column(Integer, default=0, nullable=False)
+
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+
+
 class Questionnaire(Base):
     __tablename__ = "questionnaires"
 
@@ -121,8 +188,19 @@ class Questionnaire(Base):
     source_filename = Column(String(512), nullable=False)
     status = Column(Enum(QuestionnaireStatus), default=QuestionnaireStatus.draft, nullable=False)
     question_count = Column(Integer, default=0, nullable=False)
-    raw_xlsx_blob = Column(LargeBinary, nullable=True)
-    answer_col_index = Column(Integer, nullable=True)  # 0-based; which column to write answers into on export
+    raw_xlsx_blob = Column(LargeBinary, nullable=True)  # legacy — new uploads use raw_xlsx_key
+    raw_xlsx_key  = Column(String(512), nullable=True)  # S3 object key
+    deleted_at    = Column(DateTime(timezone=True), nullable=True, index=True)
+    answer_col_index = Column(Integer, nullable=True)            # 0-based; primary answer col (Yes/No when two cols selected)
+    secondary_answer_col_index = Column(Integer, nullable=True)  # 0-based; evidence/comments col (full answer goes here)
+    question_col_index = Column(Integer, nullable=True)          # 0-based; which column has questions
+    template_id = Column(
+        Integer,
+        ForeignKey("questionnaire_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
 
     questions = relationship(
         "Question",
@@ -167,17 +245,28 @@ class Question(Base):
     question_text = Column(Text, nullable=False)
 
     draft_answer = Column(Text, nullable=True)
+    short_answer = Column(String(32), nullable=True)  # "Yes" | "No" | "Partial" | "N/A" — for Yes/No columns
     final_answer = Column(Text, nullable=True)
 
     status = Column(Enum(QuestionStatus), default=QuestionStatus.pending, nullable=False)
     confidence = Column(Enum(ConfidenceLevel), nullable=True)
     cited_chunk_ids = Column(JSON, nullable=True)  # list[int] — populated by Phase 4
     reasoning = Column(Text, nullable=True)         # LLM confidence explanation
+    category = Column(String(64), nullable=True, index=True)  # embedding-classified topic
+
+    # Assignment — nullable; SET NULL when user is deleted
+    assigned_to_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
     cited_chunks = relationship(
         "KnowledgeChunk",
         secondary="question_citations",
         back_populates="cited_in",
+    )
+    comments = relationship(
+        "QuestionComment",
+        back_populates="question",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -202,6 +291,81 @@ class LLMCall(Base):
     question_id = Column(
         Integer, ForeignKey("questions.id", ondelete="SET NULL"), nullable=True
     )
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+
+
+# ---------------------------------------------------------------------------
+# ApprovedAnswer — persistent answer library (Phase 7)
+# ---------------------------------------------------------------------------
+
+class ApprovedAnswer(Base):
+    __tablename__ = "approved_answers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    question_text = Column(Text, nullable=False)
+    answer_text = Column(Text, nullable=False)
+    answer_category = Column(String(100), nullable=True)   # auto-detected from question text
+    cited_chunk_ids = Column(JSON, nullable=True)
+    confidence_score = Column(Float, nullable=True)        # 0-1 float
+    times_reused = Column(Integer, default=0, nullable=False)
+    status = Column(String(50), default="active", nullable=False)  # active | archived
+
+    # Embedding of question_text only — used for answer-reuse similarity search
+    embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
+
+    source_question_id = Column(
+        Integer,
+        ForeignKey("questions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+
+
+# ---------------------------------------------------------------------------
+# AuditLog — immutable event trail
+# ---------------------------------------------------------------------------
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    user_email = Column(String(256), nullable=True)   # denormalized so it survives user deletion
+
+    action = Column(String(64), nullable=False, index=True)   # e.g. "question.approved"
+    resource_type = Column(String(64), nullable=True)         # "question" | "questionnaire" | "document" | "auth"
+    resource_id = Column(Integer, nullable=True)
+    detail = Column(JSON, nullable=True)                       # arbitrary extra context
+
+
+# ---------------------------------------------------------------------------
+# QuestionComment — threaded comments on a single question
+# ---------------------------------------------------------------------------
+
+class QuestionComment(Base):
+    __tablename__ = "question_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    questionnaire_id = Column(Integer, ForeignKey("questionnaires.id", ondelete="CASCADE"), nullable=False, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    user_email = Column(String(256), nullable=True)   # denormalized — survives user deletion
+    user_name = Column(String(256), nullable=True)
+
+    body = Column(Text, nullable=False)
+
+    question = relationship("Question", back_populates="comments")
 
 
 # ---------------------------------------------------------------------------
@@ -215,3 +379,28 @@ question_citations = Table(
     Column("chunk_id", Integer, ForeignKey("knowledge_chunks.id"), primary_key=True),
     Column("retrieval_score", Float, nullable=True),  # cosine similarity score
 )
+
+
+# ---------------------------------------------------------------------------
+# Job queue  (Postgres-backed — survives server restarts)
+# ---------------------------------------------------------------------------
+
+class JobStatus(str, enum.Enum):
+    pending = "pending"
+    running = "running"
+    done    = "done"
+    failed  = "failed"
+
+
+class JobQueue(Base):
+    __tablename__ = "job_queue"
+
+    id         = Column(Integer, primary_key=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    job_type   = Column(String(64), nullable=False, index=True)
+    payload    = Column(JSON, nullable=False, default=dict)
+    status     = Column(Enum(JobStatus), default=JobStatus.pending, nullable=False, index=True)
+    attempts   = Column(Integer, default=0, nullable=False)
+    last_error = Column(Text, nullable=True)
+    run_after  = Column(DateTime(timezone=True), server_default=func.now())  # for retry backoff

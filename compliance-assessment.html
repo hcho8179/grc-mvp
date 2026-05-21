@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ISO 27001:2022 Readiness Assessment</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['Inter','ui-sans-serif','system-ui','sans-serif'] } } }
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;box-sizing:border-box}
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:99px}
+    ::-webkit-scrollbar-thumb:hover{background:#94A3B8}
+    @keyframes fadeSlideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes toastOut{0%{opacity:1}80%{opacity:1}100%{opacity:0;pointer-events:none}}
+    .fade-in{animation:fadeSlideIn .2s ease forwards}
+    .toast-anim{animation:toastIn .3s ease,toastOut 3.5s ease 0.2s forwards}
+    .progress-bar{transition:width .6s cubic-bezier(.4,0,.2,1)}
+    .radio-card{cursor:pointer;transition:all .15s ease}
+    .radio-card:focus-within{outline:2px solid #1E3A8A;outline-offset:1px;border-radius:10px}
+    .evidence-zone{transition:background .15s ease,border-color .15s ease}
+    .collapsible{overflow:hidden;transition:max-height .25s ease,opacity .2s ease}
+    .collapsible.open{opacity:1}
+    .collapsible.closed{max-height:0!important;opacity:0}
+    .sidebar-item{transition:background .12s ease,color .12s ease}
+    input[type=radio]{accent-color:#1E3A8A}
+    body{overflow:hidden}
+  </style>
+</head>
+<body class="bg-[#F8FAFC] font-sans text-slate-800">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── Assessment Data ────────────────────────────────────────────────────────
+const SECTIONS = [
+  {
+    id: 'org-controls', code: 'A.5', title: 'Organizational Controls', icon: 'building',
+    questions: [
+      { id: 'A5-1', controlId: 'A.5.1', title: 'Information Security Policies',
+        text: 'Has the organization defined, obtained management approval for, and communicated comprehensive information security policies to all relevant personnel and interested parties?',
+        guidance: 'Review policy documentation, management sign-off records, and evidence of staff distribution via intranet acknowledgment logs or email confirmations.' },
+      { id: 'A5-2', controlId: 'A.5.2', title: 'Roles & Responsibilities',
+        text: 'Are information security responsibilities clearly defined, allocated across the organization, and documented in role descriptions with named owners accountable for each control domain?',
+        guidance: 'Examine RACI matrices, organizational charts, and job descriptions reflecting security responsibilities.' },
+      { id: 'A5-3', controlId: 'A.5.10', title: 'Acceptable Use of Assets',
+        text: 'Has the organization established, communicated, and enforced an acceptable use policy covering all information assets, information systems, and associated infrastructure including BYOD and remote working scenarios?',
+        guidance: 'Verify policy existence, communication records, training completion, and documented enforcement actions.' },
+    ]
+  },
+  {
+    id: 'people-controls', code: 'A.6', title: 'People Controls', icon: 'people',
+    questions: [
+      { id: 'A6-1', controlId: 'A.6.1', title: 'Pre-Employment Screening',
+        text: 'Are formal background verification checks conducted on all candidates for employment and third-party contractors prior to onboarding, proportionate to the role\'s access privileges and applicable legal/regulatory requirements?',
+        guidance: 'Review the screening policy, third-party background check vendor agreements, and sample completed checks.' },
+      { id: 'A6-2', controlId: 'A.6.3', title: 'Security Awareness & Training',
+        text: 'Are all employees and contractors provided with regular, role-appropriate information security awareness training, with completion tracked and the effectiveness of training programs periodically assessed?',
+        guidance: 'Inspect LMS completion reports, phishing simulation results, and training content relevance reviews.' },
+      { id: 'A6-3', controlId: 'A.6.5', title: 'Post-Termination Responsibilities',
+        text: 'Are information security responsibilities that remain valid after termination or change of employment communicated, enforced, and audited, including return of assets and access deprovisioning within SLA?',
+        guidance: 'Check exit checklist completeness, access revocation timeliness records, and NDA enforcement procedures.' },
+    ]
+  },
+  {
+    id: 'physical-security', code: 'A.7', title: 'Physical Security', icon: 'shield',
+    questions: [
+      { id: 'A7-1', controlId: 'A.7.1', title: 'Physical Security Perimeters',
+        text: 'Are physical security perimeters defined and implemented to protect areas containing sensitive information and information processing facilities, with controls proportionate to identified risks?',
+        guidance: 'Review site security assessments, access control system logs, CCTV coverage maps, and visitor management policies.' },
+      { id: 'A7-2', controlId: 'A.7.4', title: 'Physical Security Monitoring',
+        text: 'Are premises continuously monitored for unauthorized physical access using detection and alerting systems (CCTV, intrusion detection, manned guarding) with defined response procedures and tested periodically?',
+        guidance: 'Examine CCTV retention policies, alarm test records, guard tour logs, and incident response procedures.' },
+      { id: 'A7-3', controlId: 'A.7.8', title: 'Equipment Siting & Protection',
+        text: 'Is equipment sited and protected to reduce environmental threats, unauthorized access risks, and power supply disruptions, with environmental monitoring (temperature, humidity, fire suppression) in place?',
+        guidance: 'Review data center environmental monitoring reports, UPS test records, and equipment placement documentation.' },
+    ]
+  },
+  {
+    id: 'access-control', code: 'A.8.3', title: 'Access Control', icon: 'lock',
+    questions: [
+      { id: 'AC-1', controlId: 'A.5.15', title: 'Access Control Policy',
+        text: 'Has the organization established, documented, and implemented a formal access control policy defining how access to information systems is granted, reviewed, modified, and revoked across all user types and privilege levels?',
+        guidance: 'Review the access control policy, access request workflow, and evidence of quarterly access reviews.' },
+      { id: 'AC-2', controlId: 'A.8.3', title: 'Information Access Restriction',
+        text: 'Are access rights to information and information processing facilities strictly restricted based on the principle of least privilege and need-to-know, with role-based access controls (RBAC) consistently enforced?',
+        guidance: 'Evaluate RBAC configuration evidence, separation of duties matrix, and user access review reports.' },
+      { id: 'AC-3', controlId: 'A.8.2', title: 'Privileged Access Rights Management',
+        text: 'Is the allocation and use of privileged access rights restricted, subject to formal approval workflows, regularly reviewed for continued business justification, and managed through a Privileged Access Management (PAM) solution?',
+        guidance: 'Assess PAM tool implementation evidence, just-in-time access records, and quarterly privileged account reviews.' },
+    ]
+  },
+  {
+    id: 'asset-management', code: 'A.5.9', title: 'Asset Management', icon: 'database',
+    questions: [
+      { id: 'AM-1', controlId: 'A.5.9', title: 'Asset Inventory',
+        text: 'Does the organization maintain a complete, up-to-date inventory of all information assets (hardware, software, data, services), with clear ownership assigned and asset criticality, classification, and lifecycle status documented?',
+        guidance: 'Review CMDB or asset register currency, last audit date, asset owner assignments, and reconciliation process.' },
+      { id: 'AM-2', controlId: 'A.5.12', title: 'Information Classification',
+        text: 'Is information classified according to a formal scheme reflecting legal requirements, value, and sensitivity, with classification labels maintained consistently throughout the information lifecycle?',
+        guidance: 'Verify classification policy, labeling procedures, DLP tool configuration, and examples of correctly labeled assets.' },
+      { id: 'AM-3', controlId: 'A.5.14', title: 'Information Transfer Agreements',
+        text: 'Are formal agreements in place governing the transfer of information between the organization and third parties, covering confidentiality, integrity, data residency, and acceptable use requirements?',
+        guidance: 'Review data transfer agreements, DSA templates, and a sample of executed third-party contracts.' },
+    ]
+  },
+  {
+    id: 'cryptography', code: 'A.8.24', title: 'Cryptography', icon: 'key',
+    questions: [
+      { id: 'CRY-1', controlId: 'A.8.24', title: 'Cryptographic Policy',
+        text: 'Has the organization defined and implemented a cryptographic controls policy specifying approved algorithms, minimum key lengths, use cases for encryption, digital signatures, and hashing across all systems and data types?',
+        guidance: 'Review the cryptographic standards document, approved algorithm registry, and technical enforcement mechanisms.' },
+      { id: 'CRY-2', controlId: 'A.8.24', title: 'Key Lifecycle Management',
+        text: 'Are cryptographic keys managed through their entire lifecycle (generation, distribution, storage, rotation, archival, and destruction) in accordance with documented key management procedures and using appropriate hardware security modules?',
+        guidance: 'Assess HSM usage evidence, key rotation schedules, destruction records, and key custodian assignment.' },
+      { id: 'CRY-3', controlId: 'A.8.26', title: 'Application Security in Development',
+        text: 'Are information security requirements, including cryptographic standards, formally incorporated into the secure software development lifecycle (SSDLC), with security architecture review conducted for all new systems?',
+        guidance: 'Review SSDLC policy, architecture review board records, DAST/SAST tool integration evidence.' },
+    ]
+  },
+  {
+    id: 'incident-management', code: 'A.5.24', title: 'Incident Management', icon: 'warning',
+    questions: [
+      { id: 'INC-1', controlId: 'A.5.24', title: 'Incident Response Planning',
+        text: 'Has the organization established a formal Incident Response Plan (IRP) with defined roles, responsibilities, escalation paths, and communication protocols, regularly tested through tabletop exercises and simulations?',
+        guidance: 'Review IRP documentation, CSIRT charter, annual exercise records, and regulatory notification timelines.' },
+      { id: 'INC-2', controlId: 'A.5.25', title: 'Event Classification & Triage',
+        text: 'Are information security events assessed and classified against defined criteria to determine incident severity, with clear escalation paths, SIEM-driven triage procedures, and documented false-positive management?',
+        guidance: 'Examine classification matrix, SIEM alert triage SOPs, escalation records, and incident closure documentation.' },
+      { id: 'INC-3', controlId: 'A.5.27', title: 'Post-Incident Learning',
+        text: 'Is knowledge gained from analyzing and resolving security incidents systematically captured, formally documented in post-incident reviews, and used to improve controls and reduce recurrence?',
+        guidance: 'Review PIR templates, lessons learned register, and evidence of control improvements resulting from incidents.' },
+    ]
+  },
+  {
+    id: 'bcp', code: 'A.5.29', title: 'Business Continuity', icon: 'clock',
+    questions: [
+      { id: 'BCP-1', controlId: 'A.5.29', title: 'ICT Continuity Requirements',
+        text: 'Has the organization determined its ICT continuity requirements (RTO, RPO, MTD) for information security management in adverse situations, integrated into the enterprise Business Continuity Management framework?',
+        guidance: 'Review BIA results, RTO/RPO definitions, BCP/DRP documentation, and BCM framework integration evidence.' },
+      { id: 'BCP-2', controlId: 'A.5.30', title: 'ICT Readiness Testing',
+        text: 'Are business continuity and disaster recovery plans tested at defined intervals through realistic exercises (failover tests, tabletop exercises), with results documented and remediation actions tracked to closure?',
+        guidance: 'Inspect test plans, after-action reports, remediation tracking, and frequency alignment with risk appetite.' },
+      { id: 'BCP-3', controlId: 'A.8.13', title: 'Backup & Recovery',
+        text: 'Are backup copies of information, software, and systems maintained, protected, and regularly tested for recoverability in accordance with the documented backup policy, with offsite/cloud backup for critical data?',
+        guidance: 'Review backup policy, automated backup configuration evidence, restoration test records, and offsite storage verification.' },
+    ]
+  },
+];
+
+const RESPONSE_OPTIONS = [
+  { value: 'compliant',    label: 'Compliant',           color: 'green',  bgColor: '#F0FDF4', borderColor: '#16A34A', textColor: '#15803D', dotColor: '#16A34A' },
+  { value: 'non-compliant',label: 'Non-Compliant',        color: 'red',    bgColor: '#FEF2F2', borderColor: '#DC2626', textColor: '#B91C1C', dotColor: '#DC2626' },
+  { value: 'partial',      label: 'Partially Compliant',  color: 'amber',  bgColor: '#FFFBEB', borderColor: '#D97706', textColor: '#B45309', dotColor: '#D97706' },
+  { value: 'na',           label: 'Not Applicable',       color: 'slate',  bgColor: '#F8FAFC', borderColor: '#64748B', textColor: '#475569', dotColor: '#94A3B8' },
+];
+
+// ─── Icons ──────────────────────────────────────────────────────────────────
+const Icon = ({ name, size = 16, color = 'currentColor' }) => {
+  const icons = {
+    building: <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Z"/>,
+    people: <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/>,
+    shield: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/>,
+    lock: <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/>,
+    database: <><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></>,
+    key: <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 0 1 21.75 8.25Z"/>,
+    warning: <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>,
+    clock: <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>,
+    check: <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5"/>,
+    chevronDown: <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>,
+    chevronRight: <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/>,
+    upload: <><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></>,
+    paperClip: <path strokeLinecap="round" strokeLinejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13"/>,
+    trash: <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/>,
+    note: <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"/>,
+    save: <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6A2.25 2.25 0 0 1 6 3.75h1.5m9 0h-9"/>,
+    pdf: <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/>,
+    spinner: <><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 3a9 9 0 1 0 9 9" strokeWidth="2" strokeLinecap="round"/></>,
+    arrowRight: <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/>,
+    arrowLeft: <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/>,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+         stroke={color} strokeWidth="1.75" style={{flexShrink:0}}>
+      {icons[name] || null}
+    </svg>
+  );
+};
+
+// ─── Status helpers ──────────────────────────────────────────────────────────
+function getSectionStatus(section, responses) {
+  const answered = section.questions.filter(q => responses[q.id]?.answer).length;
+  if (answered === 0) return 'not-started';
+  if (answered === section.questions.length) return 'completed';
+  return 'in-progress';
+}
+
+function formatTime(date) {
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes/1024).toFixed(1)} KB`;
+  return `${(bytes/1048576).toFixed(1)} MB`;
+}
+
+// ─── Save Toast ──────────────────────────────────────────────────────────────
+function SaveToast({ time }) {
+  return (
+    <div className="toast-anim fixed bottom-6 right-6 z-[100] flex items-center gap-2.5
+                    bg-slate-900 text-white text-sm font-medium px-4 py-3 rounded-xl
+                    shadow-[0_8px_30px_rgba(0,0,0,0.3)]">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ADE80" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
+      </svg>
+      <span>Auto-saved at {time}</span>
+    </div>
+  );
+}
+
+// ─── Header ──────────────────────────────────────────────────────────────────
+function Header({ totalQ, answeredQ, saveStatus, lastSaved }) {
+  const pct = Math.round((answeredQ / totalQ) * 100);
+  return (
+    <header className="bg-white border-b border-slate-200 px-6 h-[68px] flex items-center gap-6 shadow-sm sticky top-0 z-40">
+      {/* Logo + Title */}
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+             style={{background:'#1E3A8A'}}>
+          <Icon name="shield" size={16} color="white"/>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-slate-400 leading-none mb-0.5 uppercase tracking-wide">Sentinel GRC</p>
+          <p className="text-sm font-bold text-slate-900 leading-none">ISO 27001:2022 Readiness Assessment</p>
+        </div>
+      </div>
+
+      <div className="h-6 w-px bg-slate-200 shrink-0"/>
+
+      {/* Progress */}
+      <div className="flex-1 max-w-sm">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs font-semibold text-slate-600">{pct}% Completed</span>
+          <span className="text-xs text-slate-400">{answeredQ} of {totalQ} questions</span>
+        </div>
+        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div className="progress-bar h-full rounded-full" style={{width:`${pct}%`, background:'#1E3A8A'}}/>
+        </div>
+      </div>
+
+      <div className="h-6 w-px bg-slate-200 shrink-0"/>
+
+      {/* Auto-save status */}
+      <div className="flex items-center gap-1.5 text-xs shrink-0">
+        {saveStatus === 'saving' ? (
+          <>
+            <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5">
+              <path strokeLinecap="round" d="M12 3a9 9 0 1 0 9 9"/>
+            </svg>
+            <span className="text-slate-400 font-medium">Saving…</span>
+          </>
+        ) : saveStatus === 'saved' ? (
+          <>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
+            </svg>
+            <span className="font-medium" style={{color:'#16A34A'}}>Saved {formatTime(lastSaved)}</span>
+          </>
+        ) : (
+          <>
+            <div className="w-2 h-2 rounded-full bg-amber-400"/>
+            <span className="text-amber-600 font-medium">Unsaved changes</span>
+          </>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 shrink-0">
+        <button className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border border-slate-200
+                           text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all duration-150">
+          <Icon name="save" size={14}/>
+          Save Draft
+        </button>
+        <button className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-150 hover:opacity-90"
+                style={{background:'#1E3A8A'}}>
+          <Icon name="pdf" size={14} color="white"/>
+          Export PDF
+        </button>
+      </div>
+    </header>
+  );
+}
+
+// ─── Sidebar ─────────────────────────────────────────────────────────────────
+function Sidebar({ sections, activeId, onSelect, responses }) {
+  const totalAnswered = sections.reduce((sum, s) =>
+    sum + s.questions.filter(q => responses[q.id]?.answer).length, 0);
+  const totalQ = sections.reduce((sum, s) => sum + s.questions.length, 0);
+
+  return (
+    <aside className="w-[272px] shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden"
+           style={{height:'calc(100vh - 68px)'}}>
+      {/* Sidebar header */}
+      <div className="px-4 py-4 border-b border-slate-100">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Assessment Domains</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-500 font-medium">{sections.length} sections</p>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-green-500"/>
+            <span className="text-xs text-slate-500">{sections.filter(s => getSectionStatus(s, responses) === 'completed').length} done</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Section list */}
+      <div className="flex-1 overflow-y-auto py-2">
+        {sections.map((section, idx) => {
+          const status = getSectionStatus(section, responses);
+          const answered = section.questions.filter(q => responses[q.id]?.answer).length;
+          const isActive = section.id === activeId;
+          return (
+            <button key={section.id} onClick={() => onSelect(section.id)}
+                    className={`sidebar-item w-full text-left px-4 py-3 flex items-start gap-3 border-l-[3px] transition-all duration-150
+                      ${isActive
+                        ? 'border-l-[#1E3A8A] bg-blue-50'
+                        : 'border-l-transparent hover:bg-slate-50'
+                      }`}>
+              {/* Icon */}
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5
+                               ${isActive ? 'bg-[#1E3A8A]' : 'bg-slate-100'}`}>
+                <Icon name={section.icon} size={14} color={isActive ? 'white' : '#64748B'}/>
+              </div>
+              {/* Text */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <span className={`text-xs font-bold uppercase tracking-wide
+                                   ${isActive ? 'text-[#1E3A8A]' : 'text-slate-400'}`}>
+                    {section.code}
+                  </span>
+                  {status === 'completed' && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-50 text-green-700 border border-green-200">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-500"/>
+                      Done
+                    </span>
+                  )}
+                  {status === 'in-progress' && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"/>
+                      Active
+                    </span>
+                  )}
+                </div>
+                <p className={`text-sm font-semibold leading-tight mb-1.5
+                              ${isActive ? 'text-slate-900' : 'text-slate-700'}`}>
+                  {section.title}
+                </p>
+                {/* Mini progress */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500"
+                         style={{
+                           width: `${(answered / section.questions.length) * 100}%`,
+                           background: status === 'completed' ? '#16A34A' : isActive ? '#1E3A8A' : '#94A3B8'
+                         }}/>
+                  </div>
+                  <span className="text-[10px] font-semibold text-slate-400 shrink-0">
+                    {answered}/{section.questions.length}
+                  </span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Sidebar footer */}
+      <div className="px-4 py-3 border-t border-slate-100 bg-slate-50">
+        <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+          <span>Overall progress</span>
+          <span className="font-bold" style={{color:'#1E3A8A'}}>
+            {Math.round((totalAnswered/totalQ)*100)}%
+          </span>
+        </div>
+        <div className="h-1.5 bg-slate-200 rounded-full mt-1.5 overflow-hidden">
+          <div className="progress-bar h-full rounded-full"
+               style={{width:`${(totalAnswered/totalQ)*100}%`, background:'#1E3A8A'}}/>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ─── Evidence Upload Zone ────────────────────────────────────────────────────
+function EvidenceUpload({ questionId, files, onFileDrop, isDragOver, onDragOver }) {
+  const inputRef = useRef(null);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    onDragOver(null);
+    onFileDrop(questionId, e.dataTransfer.files);
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files.length) onFileDrop(questionId, e.target.files);
+    e.target.value = '';
+  };
+
+  const fileIcons = { 'application/pdf': '📄', 'image/': '🖼️', default: '📎' };
+  const getFileIcon = (type) => {
+    for (const [key, icon] of Object.entries(fileIcons)) {
+      if (type.startsWith(key)) return icon;
+    }
+    return fileIcons.default;
+  };
+
+  return (
+    <div className="fade-in mt-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Icon name="paperClip" size={13} color="#64748B"/>
+        <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Evidence Upload</span>
+        <span className="text-xs text-slate-400 font-medium">— attach supporting documentation</span>
+      </div>
+      <div
+        className={`evidence-zone border-2 border-dashed rounded-xl p-5 text-center cursor-pointer
+                    ${isDragOver === questionId
+                      ? 'border-[#1E3A8A] bg-blue-50'
+                      : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white'
+                    }`}
+        onDragOver={(e) => { e.preventDefault(); onDragOver(questionId); }}
+        onDragLeave={() => onDragOver(null)}
+        onDrop={handleDrop}
+        onClick={() => inputRef.current?.click()}
+        role="button" tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
+        aria-label="Upload evidence files"
+      >
+        <div className="flex flex-col items-center gap-2">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center
+                          ${isDragOver === questionId ? 'bg-[#1E3A8A]' : 'bg-white border border-slate-200'}`}>
+            <Icon name="upload" size={18} color={isDragOver === questionId ? 'white' : '#1E3A8A'}/>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-700">
+              {isDragOver === questionId ? 'Drop files here' : 'Drag & drop files here'}
+            </p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              or <span style={{color:'#1E3A8A'}} className="font-semibold">click to browse</span>
+              {' '}· PDF, DOCX, XLSX, PNG up to 25MB
+            </p>
+          </div>
+        </div>
+        <input ref={inputRef} type="file" multiple className="hidden"
+               accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt"
+               onChange={handleFileChange}/>
+      </div>
+
+      {/* Uploaded files */}
+      {files && files.length > 0 && (
+        <div className="mt-2 space-y-1.5">
+          {files.map((f, i) => (
+            <div key={i} className="flex items-center gap-2.5 bg-white border border-slate-200
+                                    rounded-lg px-3 py-2 text-xs">
+              <span className="text-base">{getFileIcon(f.type)}</span>
+              <span className="font-medium text-slate-700 flex-1 truncate">{f.name}</span>
+              <span className="text-slate-400 shrink-0">{formatFileSize(f.size)}</span>
+              <div className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                <Icon name="check" size={10} color="#16A34A"/>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Comments Panel ──────────────────────────────────────────────────────────
+function CommentsPanel({ questionId, isOpen, onToggle, noteInput, onNoteInput, onNoteAdd, notes }) {
+  const textareaRef = useRef(null);
+  const existingNotes = notes || [];
+
+  useEffect(() => {
+    if (isOpen && textareaRef.current) textareaRef.current.focus();
+  }, [isOpen]);
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-3">
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors w-full"
+        aria-expanded={isOpen}
+      >
+        <Icon name="note" size={13} color={isOpen ? '#1E3A8A' : '#94A3B8'}/>
+        <span style={isOpen ? {color:'#1E3A8A'} : {}}>
+          Comments & Internal Notes
+          {existingNotes.length > 0 && (
+            <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold text-white"
+                  style={{background:'#1E3A8A'}}>
+              {existingNotes.length}
+            </span>
+          )}
+        </span>
+        <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={12} color={isOpen ? '#1E3A8A' : '#94A3B8'}/>
+      </button>
+
+      {isOpen && (
+        <div className="fade-in mt-3 space-y-2.5">
+          {/* Existing notes */}
+          {existingNotes.map((note, i) => (
+            <div key={i} className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                       style={{background:'#1E3A8A'}}>A</div>
+                  <span className="text-xs font-semibold text-slate-700">Assessor</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-medium shrink-0">
+                  {formatTime(note.time)}
+                </span>
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed pl-7">{note.text}</p>
+            </div>
+          ))}
+
+          {/* New note input */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:border-[#1E3A8A] focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+            <textarea
+              ref={textareaRef}
+              value={noteInput || ''}
+              onChange={(e) => onNoteInput(questionId, e.target.value)}
+              placeholder="Add an internal note, finding, or recommendation…"
+              rows={3}
+              className="w-full px-3 py-2.5 text-xs text-slate-800 bg-transparent border-none outline-none resize-none placeholder:text-slate-400 font-medium"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onNoteAdd(questionId);
+              }}
+            />
+            <div className="flex items-center justify-between px-3 py-2 bg-white border-t border-slate-100">
+              <span className="text-[10px] text-slate-400">Ctrl+Enter to save · Visible to assessors only</span>
+              <button
+                onClick={() => onNoteAdd(questionId)}
+                disabled={!noteInput?.trim()}
+                className="px-3 py-1 rounded-lg text-xs font-semibold text-white transition-all duration-150
+                           disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{background:'#1E3A8A'}}
+              >
+                Add Note
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Radio Options ────────────────────────────────────────────────────────────
+function ResponseOptions({ questionId, currentAnswer, onResponse }) {
+  return (
+    <div className="grid grid-cols-2 gap-2.5 mt-4" role="radiogroup"
+         aria-label="Compliance status for this control">
+      {RESPONSE_OPTIONS.map((opt) => {
+        const isSelected = currentAnswer === opt.value;
+        return (
+          <label key={opt.value}
+                 className={`radio-card flex items-start gap-3 p-3.5 rounded-xl border-2 cursor-pointer
+                             ${isSelected
+                               ? 'shadow-sm'
+                               : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                             }`}
+                 style={isSelected ? {
+                   borderColor: opt.borderColor,
+                   backgroundColor: opt.bgColor,
+                 } : {}}>
+            <input type="radio" name={`q-${questionId}`} value={opt.value}
+                   checked={isSelected} onChange={() => onResponse(questionId, opt.value)}
+                   className="mt-0.5 shrink-0" style={{accentColor: opt.dotColor}}/>
+            <div>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <div className="w-2 h-2 rounded-full shrink-0" style={{background: opt.dotColor}}/>
+                <span className={`text-sm font-semibold ${isSelected ? '' : 'text-slate-700'}`}
+                      style={isSelected ? {color: opt.textColor} : {}}>
+                  {opt.label}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 leading-snug">
+                {opt.value === 'compliant' && 'Control is fully implemented and effective'}
+                {opt.value === 'non-compliant' && 'Control is absent or ineffective'}
+                {opt.value === 'partial' && 'Control is partially implemented'}
+                {opt.value === 'na' && 'Control is not applicable to this environment'}
+              </p>
+            </div>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Question Card ────────────────────────────────────────────────────────────
+function QuestionCard({
+  question, sectionIndex, questionIndex,
+  response, isNotesOpen, noteInput,
+  uploadedFiles, dragOverQ,
+  onResponse, onToggleNotes, onNoteInput, onNoteAdd, onFileDrop, onDragOver
+}) {
+  const [showGuidance, setShowGuidance] = useState(false);
+  const optionData = RESPONSE_OPTIONS.find(o => o.value === response?.answer);
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+         id={`question-${question.id}`}>
+      {/* Card header */}
+      <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-100"
+           style={{background:'#F8FAFC'}}>
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="w-7 h-7 rounded-lg text-xs font-bold text-white flex items-center justify-center shrink-0 mt-0.5"
+               style={{background:'#1E3A8A'}}>
+            {questionIndex + 1}
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border"
+                    style={{background:'#EFF6FF', borderColor:'#BFDBFE', color:'#1E40AF'}}>
+                {question.controlId}
+              </span>
+              <h3 className="text-sm font-bold text-slate-900">{question.title}</h3>
+            </div>
+          </div>
+        </div>
+        {/* Status badge */}
+        {optionData && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold shrink-0 border"
+               style={{background:optionData.bgColor, borderColor:optionData.borderColor, color:optionData.textColor}}>
+            <div className="w-1.5 h-1.5 rounded-full" style={{background:optionData.dotColor}}/>
+            {optionData.label}
+          </div>
+        )}
+      </div>
+
+      <div className="px-6 py-5">
+        {/* Question text */}
+        <p className="text-sm text-slate-700 leading-relaxed">{question.text}</p>
+
+        {/* Guidance toggle */}
+        <button onClick={() => setShowGuidance(!showGuidance)}
+                className="mt-2 flex items-center gap-1.5 text-xs font-semibold transition-colors"
+                style={{color: showGuidance ? '#1E3A8A' : '#94A3B8'}}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path strokeLinecap="round" d="M12 16v-4m0-4h.01"/>
+          </svg>
+          {showGuidance ? 'Hide' : 'Show'} assessor guidance
+          <Icon name={showGuidance ? 'chevronDown' : 'chevronRight'} size={11}/>
+        </button>
+        {showGuidance && (
+          <div className="fade-in mt-2 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-blue-800 leading-relaxed font-medium">{question.guidance}</p>
+          </div>
+        )}
+
+        {/* Response options */}
+        <ResponseOptions
+          questionId={question.id}
+          currentAnswer={response?.answer}
+          onResponse={onResponse}
+        />
+
+        {/* Conditional evidence upload */}
+        {response?.answer && (
+          <EvidenceUpload
+            questionId={question.id}
+            files={uploadedFiles[question.id]}
+            onFileDrop={onFileDrop}
+            isDragOver={dragOverQ}
+            onDragOver={onDragOver}
+          />
+        )}
+
+        {/* Comments section */}
+        <CommentsPanel
+          questionId={question.id}
+          isOpen={isNotesOpen}
+          onToggle={() => onToggleNotes(question.id)}
+          noteInput={noteInput}
+          onNoteInput={onNoteInput}
+          onNoteAdd={onNoteAdd}
+          notes={response?.notes}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Question Area ────────────────────────────────────────────────────────────
+function QuestionArea({
+  sections, activeId, responses, expandedNotes, noteInputs,
+  uploadedFiles, dragOverQ,
+  onResponse, onToggleNotes, onNoteInput, onNoteAdd, onFileDrop, onDragOver, onSectionChange
+}) {
+  const sectionIndex = sections.findIndex(s => s.id === activeId);
+  const section = sections[sectionIndex];
+  const prevSection = sections[sectionIndex - 1];
+  const nextSection = sections[sectionIndex + 1];
+  const status = getSectionStatus(section, responses);
+  const answered = section.questions.filter(q => responses[q.id]?.answer).length;
+
+  if (!section) return null;
+
+  return (
+    <main className="flex-1 overflow-y-auto" style={{height:'calc(100vh - 68px)'}}>
+      <div className="max-w-3xl mx-auto px-8 py-7">
+
+        {/* Section header */}
+        <div className="mb-7">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2.5 mb-2">
+                <span className="text-xs font-bold uppercase tracking-widest text-slate-400">{section.code}</span>
+                <span className="text-slate-300">·</span>
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border
+                                  ${status === 'completed' ? 'bg-green-50 text-green-700 border-green-200'
+                                   : status === 'in-progress' ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                   : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full
+                                   ${status === 'completed' ? 'bg-green-500'
+                                    : status === 'in-progress' ? 'bg-amber-400 animate-pulse'
+                                    : 'bg-slate-400'}`}/>
+                  {status === 'completed' ? 'Completed' : status === 'in-progress' ? 'In Progress' : 'Not Started'}
+                </span>
+              </div>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">{section.title}</h1>
+              <p className="text-sm text-slate-500 mt-1.5">
+                {answered} of {section.questions.length} questions answered in this domain
+              </p>
+            </div>
+            {/* Section progress ring */}
+            <div className="shrink-0 relative w-14 h-14">
+              <svg width="56" height="56" viewBox="0 0 56 56" style={{transform:'rotate(-90deg)'}}>
+                <circle cx="28" cy="28" r="23" fill="none" stroke="#E2E8F0" strokeWidth="4"/>
+                <circle cx="28" cy="28" r="23" fill="none"
+                        stroke={status === 'completed' ? '#16A34A' : '#1E3A8A'}
+                        strokeWidth="4" strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 23}`}
+                        strokeDashoffset={`${2 * Math.PI * 23 * (1 - answered/section.questions.length)}`}
+                        style={{transition:'stroke-dashoffset .5s ease'}}/>
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-xs font-black"
+                    style={{color: status === 'completed' ? '#16A34A' : '#1E3A8A'}}>
+                {Math.round((answered/section.questions.length)*100)}%
+              </span>
+            </div>
+          </div>
+
+          {/* Section progress bar */}
+          <div className="h-1.5 bg-slate-100 rounded-full mt-4 overflow-hidden">
+            <div className="progress-bar h-full rounded-full"
+                 style={{
+                   width:`${(answered/section.questions.length)*100}%`,
+                   background: status === 'completed' ? '#16A34A' : '#1E3A8A'
+                 }}/>
+          </div>
+        </div>
+
+        {/* Question cards */}
+        <div className="space-y-5">
+          {section.questions.map((question, qi) => (
+            <QuestionCard
+              key={question.id}
+              question={question}
+              sectionIndex={sectionIndex}
+              questionIndex={qi}
+              response={responses[question.id]}
+              isNotesOpen={expandedNotes.has(question.id)}
+              noteInput={noteInputs[question.id] || ''}
+              uploadedFiles={uploadedFiles}
+              dragOverQ={dragOverQ}
+              onResponse={onResponse}
+              onToggleNotes={onToggleNotes}
+              onNoteInput={onNoteInput}
+              onNoteAdd={onNoteAdd}
+              onFileDrop={onFileDrop}
+              onDragOver={onDragOver}
+            />
+          ))}
+        </div>
+
+        {/* Section completion banner */}
+        {status === 'completed' && (
+          <div className="fade-in mt-5 bg-green-50 border border-green-200 rounded-2xl px-5 py-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+              <Icon name="check" size={18} color="#16A34A"/>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-green-800">All questions answered</p>
+              <p className="text-xs text-green-600 mt-0.5">You can proceed to the next section or review your responses above.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-100">
+          <div>
+            {prevSection ? (
+              <button onClick={() => onSectionChange(prevSection.id)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all">
+                <Icon name="arrowLeft" size={15}/>
+                {prevSection.title}
+              </button>
+            ) : <div/>}
+          </div>
+          <div className="text-xs font-medium text-slate-400">
+            Section {sectionIndex + 1} of {sections.length}
+          </div>
+          <div>
+            {nextSection ? (
+              <button onClick={() => onSectionChange(nextSection.id)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-all"
+                      style={{background:'#1E3A8A'}}>
+                {nextSection.title}
+                <Icon name="arrowRight" size={15} color="white"/>
+              </button>
+            ) : (
+              <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-all"
+                      style={{background:'#16A34A'}}>
+                <Icon name="check" size={15} color="white"/>
+                Complete Assessment
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [activeSection, setActiveSection] = useState('access-control');
+  const [responses, setResponses] = useState({});
+  const [expandedNotes, setExpandedNotes] = useState(new Set());
+  const [noteInputs, setNoteInputs] = useState({});
+  const [uploadedFiles, setUploadedFiles] = useState({});
+  const [dragOverQ, setDragOverQ] = useState(null);
+  const [saveStatus, setSaveStatus] = useState('saved');
+  const [lastSaved, setLastSaved] = useState(new Date());
+  const [showToast, setShowToast] = useState(false);
+  const saveTimer = useRef(null);
+  const toastTimer = useRef(null);
+
+  const totalQ = SECTIONS.reduce((s, sec) => s + sec.questions.length, 0);
+  const answeredQ = Object.keys(responses).filter(id => responses[id]?.answer).length;
+
+  const triggerSave = useCallback(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setSaveStatus('saving');
+    saveTimer.current = setTimeout(() => {
+      const now = new Date();
+      setSaveStatus('saved');
+      setLastSaved(now);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      setShowToast(true);
+      toastTimer.current = setTimeout(() => setShowToast(false), 3800);
+    }, 1200);
+  }, []);
+
+  const handleResponse = useCallback((qId, answer) => {
+    setResponses(prev => ({ ...prev, [qId]: { ...(prev[qId] || {}), answer } }));
+    setSaveStatus('unsaved');
+    triggerSave();
+  }, [triggerSave]);
+
+  const handleToggleNotes = useCallback((qId) => {
+    setExpandedNotes(prev => {
+      const next = new Set(prev);
+      next.has(qId) ? next.delete(qId) : next.add(qId);
+      return next;
+    });
+  }, []);
+
+  const handleNoteAdd = useCallback((qId) => {
+    const text = noteInputs[qId]?.trim();
+    if (!text) return;
+    setResponses(prev => ({
+      ...prev,
+      [qId]: { ...(prev[qId] || {}), notes: [...(prev[qId]?.notes || []), { text, time: new Date() }] }
+    }));
+    setNoteInputs(prev => ({ ...prev, [qId]: '' }));
+    setSaveStatus('unsaved');
+    triggerSave();
+  }, [noteInputs, triggerSave]);
+
+  const handleFileDrop = useCallback((qId, files) => {
+    const arr = Array.from(files).slice(0, 5);
+    setUploadedFiles(prev => ({
+      ...prev,
+      [qId]: [...(prev[qId] || []), ...arr.map(f => ({ name: f.name, size: f.size, type: f.type }))]
+    }));
+    setSaveStatus('unsaved');
+    triggerSave();
+  }, [triggerSave]);
+
+  return (
+    <div className="h-screen flex flex-col overflow-hidden" style={{fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <Header
+        totalQ={totalQ}
+        answeredQ={answeredQ}
+        saveStatus={saveStatus}
+        lastSaved={lastSaved}
+      />
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar
+          sections={SECTIONS}
+          activeId={activeSection}
+          onSelect={setActiveSection}
+          responses={responses}
+        />
+        <QuestionArea
+          sections={SECTIONS}
+          activeId={activeSection}
+          responses={responses}
+          expandedNotes={expandedNotes}
+          noteInputs={noteInputs}
+          uploadedFiles={uploadedFiles}
+          dragOverQ={dragOverQ}
+          onResponse={handleResponse}
+          onToggleNotes={handleToggleNotes}
+          onNoteInput={(qId, val) => setNoteInputs(prev => ({ ...prev, [qId]: val }))}
+          onNoteAdd={handleNoteAdd}
+          onFileDrop={handleFileDrop}
+          onDragOver={setDragOverQ}
+          onSectionChange={setActiveSection}
+        />
+      </div>
+      {showToast && <SaveToast time={formatTime(lastSaved)} />}
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>

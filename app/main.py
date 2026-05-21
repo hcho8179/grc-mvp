@@ -1,12 +1,85 @@
-from fastapi import FastAPI
+import asyncio
+from contextlib import asynccontextmanager
+
+import sentry_sdk
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
-from app.routes import admin, answers, dashboard, knowledge, questionnaires
+from app.config import get_settings
+from app.routes import admin, answers, api, auth, dashboard, knowledge, questionnaires
 
-app = FastAPI(title="Sentinel GRC", version="0.1.0")
+_settings = get_settings()
+if _settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=_settings.sentry_dsn,
+        traces_sample_rate=0.2,
+        send_default_pii=False,
+    )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from app.services.jobs import worker_loop
+    task = asyncio.create_task(worker_loop())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+from app.limiter import limiter
+
+app = FastAPI(title="Sentinel GRC", version="0.1.0", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Security headers on every response
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    # Prevent browsers from MIME-sniffing the content type
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # Block this site from being embedded in iframes on other domains (clickjacking)
+    response.headers["X-Frame-Options"] = "DENY"
+    # Don't send the full URL to third-party sites in the Referer header
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # Disable browser features this app never needs
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # Content Security Policy — restrict what the browser is allowed to load
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "   # React uses inline styles
+        "img-src 'self' data: blob:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none'"               # modern equivalent of X-Frame-Options
+    )
+    if _settings.https_only:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+_origins = [o.strip() for o in _settings.allowed_origins.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+app.include_router(auth.router)             # Auth: register, login, me
+app.include_router(api.router)              # JSON API for React frontend
 app.include_router(dashboard.router, tags=["dashboard"])
 app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
 app.include_router(questionnaires.router, prefix="/questionnaires", tags=["questionnaires"])

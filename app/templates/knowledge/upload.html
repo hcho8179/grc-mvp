@@ -1,41 +1,48 @@
 {% extends "base.html" %}
-{% block title %}Upload Document — GRC MVP{% endblock %}
+{% block title %}Upload Document — Sentinel{% endblock %}
 {% block content %}
-
 <div class="mb-6">
-  <a href="/knowledge" class="text-sm text-gray-500 hover:text-gray-700">&larr; Knowledge Base</a>
+  <a href="/knowledge" class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-300 transition-colors">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+    Knowledge Base
+  </a>
 </div>
-
-<h1 class="text-2xl font-bold mb-6">Upload Document</h1>
-
-{% if error %}
-<div class="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded mb-4">
-  {{ error }}
+<div class="max-w-lg">
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] mb-2 text-emerald-400">New Source</p>
+  <h1 class="text-4xl font-black tracking-tight text-white leading-none mb-1">Upload Document</h1>
+  <p class="text-slate-500 text-sm mb-8">Add a policy or reference document to power your AI responses.</p>
+  {% if error %}
+  <div class="flex items-start gap-3 bg-rose-400/10 border border-rose-400/20 text-rose-400 text-sm px-4 py-3.5 rounded-2xl mb-6">
+    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
+    {{ error }}
+  </div>
+  {% endif %}
+  <div class="bg-white/[0.04] backdrop-blur-sm border border-emerald-500/10 rounded-2xl p-7">
+    <form method="post" action="/knowledge/upload" enctype="multipart/form-data" class="space-y-5">
+      <div>
+        <label class="block text-sm font-bold text-slate-300 mb-2">File</label>
+        <div class="border-2 border-dashed border-white/10 rounded-2xl p-8 hover:border-emerald-500/30 hover:bg-emerald-500/[0.03] transition-all cursor-pointer">
+          <div class="flex flex-col items-center text-center mb-5">
+            <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4 shadow-[0_0_25px_rgba(16,185,129,0.15)]">
+              <svg class="w-7 h-7 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
+            </div>
+            <p class="text-sm font-bold text-slate-400">Drop your file here, or click to browse</p>
+            <div class="flex items-center gap-3 mt-3">
+              <span class="text-xs font-bold text-rose-400 px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/20">PDF</span>
+              <span class="text-xs font-bold text-blue-400 px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">DOCX</span>
+              <span class="text-xs font-bold text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">XLSX</span>
+            </div>
+          </div>
+          <input type="file" name="file" accept=".pdf,.docx,.xlsx" required
+                 class="block w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer file:transition-colors file:shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+        </div>
+      </div>
+      <button type="submit"
+              class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:shadow-[0_0_30px_rgba(16,185,129,0.55)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-150">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
+        Upload Document
+      </button>
+    </form>
+  </div>
 </div>
-{% endif %}
-
-<div class="bg-white border border-gray-200 rounded p-6 max-w-lg">
-  <form method="post" action="/knowledge/upload" enctype="multipart/form-data" class="space-y-5">
-
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-1">File</label>
-      <input type="file" name="file" accept=".pdf,.docx,.xlsx" required
-             class="block w-full text-sm text-gray-700
-                    file:mr-3 file:py-2 file:px-4 file:rounded
-                    file:border-0 file:text-sm file:font-medium
-                    file:bg-blue-50 file:text-blue-700
-                    hover:file:bg-blue-100 cursor-pointer">
-      <p class="text-xs text-gray-400 mt-1">
-        PDF or DOCX — parsed and chunked automatically.<br>
-        XLSX — you'll choose which columns are questions and answers.
-      </p>
-    </div>
-
-    <button type="submit"
-            class="bg-blue-600 text-white text-sm px-5 py-2 rounded hover:bg-blue-700 font-medium">
-      Upload
-    </button>
-  </form>
-</div>
-
 {% endblock %}

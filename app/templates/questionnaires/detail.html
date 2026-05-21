@@ -1,97 +1,129 @@
 {% extends "base.html" %}
-{% block title %}{{ questionnaire.name }} — GRC MVP{% endblock %}
+{% block title %}{{ questionnaire.name }} — Sentinel{% endblock %}
 {% block content %}
 
-<div class="mb-4">
-  <a href="/questionnaires" class="text-sm text-gray-500 hover:text-gray-700">&larr; Questionnaires</a>
+<div class="mb-6">
+  <a href="/questionnaires" class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-300 transition-colors">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+    All Questionnaires
+  </a>
 </div>
 
-<div class="flex items-start justify-between mb-6">
-  <div>
-    <h1 class="text-2xl font-bold">{{ questionnaire.name }}</h1>
-    <p class="text-sm text-gray-500 mt-1">
-      {% if questionnaire.customer_name %}{{ questionnaire.customer_name }} &middot; {% endif %}
-      {{ questionnaire.source_filename }} &middot;
-      {{ questionnaire.question_count }} question{{ 's' if questionnaire.question_count != 1 else '' }} &middot;
-      uploaded {{ questionnaire.created_at.strftime('%Y-%m-%d') }}
-    </p>
-  </div>
+{% set st = questionnaire.status.value %}
+{% if questions %}
+  {% set approved_count = questions | selectattr('status.value', 'equalto', 'approved') | list | length %}
+  {% set generated_count = questions | selectattr('status.value', 'equalto', 'generated') | list | length %}
+  {% set pending_count = questions | selectattr('status.value', 'equalto', 'pending') | list | length %}
+  {% set rejected_count = questions | selectattr('status.value', 'equalto', 'rejected') | list | length %}
+  {% set total = questionnaire.question_count %}
+  {% set approved_pct = (approved_count / total * 100) | int if total > 0 else 0 %}
+  {% set generated_pct = (generated_count / total * 100) | int if total > 0 else 0 %}
+{% endif %}
 
-  <div class="flex items-center gap-3 flex-shrink-0">
-    {# Status badge #}
-    {% set st = questionnaire.status.value %}
-    {% if st == "draft" %}
-      <span class="px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">Draft</span>
-    {% elif st == "in_progress" %}
-      <span class="px-2.5 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800">In Progress</span>
-    {% elif st == "complete" %}
-      <span class="px-2.5 py-1 rounded text-xs font-medium bg-green-100 text-green-800">Complete</span>
-    {% endif %}
+{# ── Header card with cyan/blue accent ─────────────── #}
+<div class="bg-gradient-to-br from-cyan-500/[0.07] via-white/[0.02] to-blue-500/[0.05]
+            border border-cyan-500/15 rounded-2xl p-6 mb-6 shadow-[0_8px_32px_rgba(0,0,0,0.3)]">
+  <div class="flex items-start justify-between gap-6">
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-3 flex-wrap mb-1.5">
+        <h1 class="text-2xl font-black text-white tracking-tight">{{ questionnaire.name }}</h1>
+        {% if st == "draft" %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20"><span class="w-1.5 h-1.5 rounded-full bg-slate-500 inline-block"></span>Draft</span>
+        {% elif st == "in_progress" %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-400/10 text-amber-400 border border-amber-400/20"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-pulse"></span>In Progress</span>
+        {% elif st == "complete" %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>Complete</span>{% endif %}
+      </div>
+      <p class="text-sm text-slate-500">
+        {% if questionnaire.customer_name %}<span class="text-slate-300 font-semibold">{{ questionnaire.customer_name }}</span><span class="mx-1.5 text-slate-700">·</span>{% endif %}
+        {{ questionnaire.source_filename }}<span class="mx-1.5 text-slate-700">·</span>{{ questionnaire.question_count }} question{{ 's' if questionnaire.question_count != 1 else '' }}<span class="mx-1.5 text-slate-700">·</span>{{ questionnaire.created_at.strftime('%b %d, %Y') }}
+      </p>
 
-    {# Generate button #}
-    <form method="post" action="/questionnaires/{{ questionnaire.id }}/generate"
-          id="gen-form"
-          onsubmit="document.getElementById('gen-btn').disabled=true;
-                    document.getElementById('gen-btn').textContent='Generating…';">
-      <button id="gen-btn" type="submit"
-              class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium
-                     bg-indigo-600 text-white hover:bg-indigo-700 transition-colors
-                     disabled:opacity-50 disabled:cursor-not-allowed">
-        ✦ Generate Answers
-      </button>
-    </form>
+      {% if questions %}
+      <div class="mt-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-4 text-xs font-bold">
+            <span class="flex items-center gap-1.5 text-emerald-400"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>{{ approved_count }} approved</span>
+            <span class="flex items-center gap-1.5 text-cyan-400"><span class="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span>{{ generated_count }} generated</span>
+            <span class="flex items-center gap-1.5 text-slate-600"><span class="w-2 h-2 rounded-full bg-slate-600 inline-block"></span>{{ pending_count }} pending</span>
+            {% if rejected_count > 0 %}<span class="flex items-center gap-1.5 text-rose-400"><span class="w-2 h-2 rounded-full bg-rose-400 inline-block"></span>{{ rejected_count }} rejected</span>{% endif %}
+          </div>
+          <span class="text-xs font-bold text-slate-600 tabular-nums">{{ approved_count }}/{{ total }}</span>
+        </div>
+        <div class="h-2 bg-white/[0.06] rounded-full overflow-hidden flex border border-white/[0.04]">
+          <div class="h-full bg-gradient-to-r from-emerald-400 to-teal-400 transition-all duration-700" style="width: {{ approved_pct }}%"></div>
+          <div class="h-full bg-gradient-to-r from-cyan-400 to-blue-400 transition-all duration-700" style="width: {{ generated_pct }}%"></div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
 
-    {# Export button #}
-    <a href="/questionnaires/{{ questionnaire.id }}/export"
-       class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium
-              bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
-      ↓ Export XLSX
-    </a>
+    <div class="flex flex-col gap-2 shrink-0 items-end">
+      <div class="flex items-center gap-2 flex-wrap justify-end">
+        <form method="post" action="/questionnaires/{{ questionnaire.id }}/generate" id="gen-form"
+              onsubmit="var b=document.getElementById('gen-btn');b.disabled=true;b.innerHTML='<svg class=\'w-4 h-4 animate-spin\' fill=\'none\' viewBox=\'0 0 24 24\'><circle class=\'opacity-25\' cx=\'12\' cy=\'12\' r=\'10\' stroke=\'currentColor\' stroke-width=\'4\'></circle><path class=\'opacity-75\' fill=\'currentColor\' d=\'M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z\'></path></svg>Generating…';">
+          <button id="gen-btn" type="submit"
+                  class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-cyan-600 to-blue-600 shadow-[0_0_20px_rgba(6,182,212,0.35)] hover:shadow-[0_0_28px_rgba(6,182,212,0.55)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z"/></svg>
+            Generate Answers
+          </button>
+        </form>
 
-    {# Delete #}
-    <form method="post" action="/questionnaires/{{ questionnaire.id }}/delete"
-          onsubmit="return confirm('Delete {{ questionnaire.name }} and all its questions?')">
-      <button type="submit" class="text-sm text-red-500 hover:text-red-700 font-medium">Delete</button>
-    </form>
+        <a href="/questionnaires/{{ questionnaire.id }}/export"
+           class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/30 hover:shadow-[0_0_18px_rgba(16,185,129,0.2)] hover:-translate-y-0.5 transition-all duration-150">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+          Export XLSX
+        </a>
+
+        <div class="relative" x-data="{ open: false }">
+          <button @click="open = !open"
+                  class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white/[0.05] border border-white/10 text-slate-300 hover:bg-white/10 hover:border-white/20 hover:text-white hover:-translate-y-0.5 transition-all duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z"/></svg>
+            Save Template
+            <svg class="w-3.5 h-3.5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+          </button>
+          <div x-show="open" x-cloak @click.outside="open = false"
+               class="absolute right-0 top-12 z-30 w-72 rounded-2xl p-5 bg-[#0b0c14]/95 backdrop-blur-xl border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
+            <p class="text-xs text-slate-500 mb-3 leading-snug">Save this questionnaire's column layout for future uploads.</p>
+            <form hx-post="/questionnaires/{{ questionnaire.id }}/save-template" hx-target="#tmpl-result" hx-swap="innerHTML" @submit="open = false">
+              <input type="text" name="template_name" placeholder="e.g. Acme SIG Lite 2026" value="{{ questionnaire.customer_name or questionnaire.name }}" required
+                     class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm mb-3 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/30 hover:border-white/20 transition-colors">
+              <button type="submit" class="w-full px-3 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-cyan-600 to-blue-600 text-white hover:from-cyan-500 hover:to-blue-500 shadow-[0_0_15px_rgba(6,182,212,0.25)] hover:shadow-[0_0_22px_rgba(6,182,212,0.45)] transition-all duration-150">Save Template</button>
+            </form>
+            <div id="tmpl-result" class="mt-2 text-sm font-medium text-emerald-400"></div>
+          </div>
+        </div>
+
+        <form method="post" action="/questionnaires/{{ questionnaire.id }}/delete" onsubmit="return confirm('Delete {{ questionnaire.name }}?')">
+          <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:text-rose-400 hover:bg-rose-400/10 transition-all duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>
+            Delete
+          </button>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 
 {% if questions %}
-
-{# Summary counts #}
-{% set approved_count = questions | selectattr('status.value', 'equalto', 'approved') | list | length %}
-{% set generated_count = questions | selectattr('status.value', 'equalto', 'generated') | list | length %}
-{% set pending_count = questions | selectattr('status.value', 'equalto', 'pending') | list | length %}
-<div class="flex gap-4 mb-4 text-sm text-gray-600">
-  <span>{{ approved_count }} approved</span>
-  <span>{{ generated_count }} generated</span>
-  <span>{{ pending_count }} pending</span>
-</div>
-
-<div class="bg-white border border-gray-200 rounded overflow-visible">
+<div class="bg-white/[0.04] backdrop-blur-sm border border-white/[0.07] rounded-2xl overflow-visible">
   <table class="w-full text-sm">
     <thead>
-      <tr class="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium text-gray-600 uppercase tracking-wide">
-        <th class="px-3 py-2 w-10">#</th>
-        <th class="px-3 py-2">Question</th>
-        <th class="px-3 py-2 min-w-[240px]">Draft Answer</th>
-        <th class="px-3 py-2 text-center">Conf.</th>
-        <th class="px-3 py-2">Sources</th>
-        <th class="px-3 py-2 text-center">Status</th>
-        <th class="px-3 py-2">Actions</th>
+      <tr class="border-b border-white/[0.05]">
+        <th class="px-4 py-4 text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] w-10 text-center">#</th>
+        <th class="px-4 py-4 text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] text-left">Question</th>
+        <th class="px-4 py-4 text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] text-left min-w-[240px]">Draft Answer</th>
+        <th class="px-4 py-4 text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] text-center">Conf.</th>
+        <th class="px-4 py-4 text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] text-left">Sources</th>
+        <th class="px-4 py-4 text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] text-center">Status</th>
+        <th class="px-4 py-4 text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] text-left">Actions</th>
       </tr>
     </thead>
     <tbody>
-      {% for q in questions %}
-        {% include "questionnaires/_row.html" %}
-      {% endfor %}
+      {% for q in questions %}{% include "questionnaires/_row.html" %}{% endfor %}
     </tbody>
   </table>
 </div>
-
 {% else %}
-<div class="bg-white border border-gray-200 rounded p-8 text-center text-gray-500">
-  No questions found.
+<div class="bg-white/[0.04] border border-white/[0.07] rounded-2xl py-16 text-center">
+  <p class="text-slate-500 font-semibold">No questions found.</p>
 </div>
 {% endif %}
 

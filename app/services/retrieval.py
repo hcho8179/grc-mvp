@@ -19,32 +19,47 @@ async def retrieve_relevant_chunks(
     question_text: str,
     db: Session,
     top_k: int = 5,
-    similarity_threshold: float = 0.5,
+    similarity_threshold: float = 0.35,
+    org_id: int | None = None,
 ) -> list[RetrievalResult]:
     """Embed *question_text* and return the top-K most similar KnowledgeChunks.
 
     Chunks whose cosine similarity falls below *similarity_threshold* are
     excluded.  Results are ordered highest-similarity first.
+    When org_id is provided, only chunks belonging to that org are searched.
     """
     provider = get_embedding_provider()
     embeddings = await provider.embed([question_text], input_type="query")
     query_vec = embeddings[0]
 
-    # Inline the vector literal — values come from our own embedding service
-    # so they are trusted floats; no SQL-injection risk.
-    vec_str = "[" + ",".join(str(v) for v in query_vec) + "]"
+    vec_str = "[" + ",".join(str(float(v)) for v in query_vec) + "]"
 
-    rows = db.execute(
-        text(f"""
-            SELECT id,
-                   1 - (embedding <=> '{vec_str}'::vector) AS similarity
-            FROM   knowledge_chunks
-            WHERE  embedding IS NOT NULL
-            ORDER  BY embedding <=> '{vec_str}'::vector
-            LIMIT  :k
-        """),
-        {"k": top_k},
-    ).fetchall()
+    if org_id is not None:
+        rows = db.execute(
+            text("""
+                SELECT kc.id,
+                       1 - (kc.embedding <=> CAST(:vec AS vector)) AS similarity
+                FROM   knowledge_chunks kc
+                JOIN   documents d ON d.id = kc.document_id
+                WHERE  kc.embedding IS NOT NULL
+                AND    d.org_id = :org_id
+                ORDER  BY kc.embedding <=> CAST(:vec AS vector)
+                LIMIT  :k
+            """),
+            {"vec": vec_str, "k": top_k, "org_id": org_id},
+        ).fetchall()
+    else:
+        rows = db.execute(
+            text("""
+                SELECT id,
+                       1 - (embedding <=> CAST(:vec AS vector)) AS similarity
+                FROM   knowledge_chunks
+                WHERE  embedding IS NOT NULL
+                ORDER  BY embedding <=> CAST(:vec AS vector)
+                LIMIT  :k
+            """),
+            {"vec": vec_str, "k": top_k},
+        ).fetchall()
 
     if not rows:
         return []

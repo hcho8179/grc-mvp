@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: grc
+          POSTGRES_PASSWORD: grc_secret
+          POSTGRES_DB: grc_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://grc:grc_secret@localhost:5432/grc_db
+      JWT_SECRET_KEY: ci-test-secret-not-used-in-production
+      ALLOWED_ORIGINS: http://localhost:5173
+      HTTPS_ONLY: "false"
+      # LLM/embedding keys — not needed for tests (all mocked)
+      GEMINI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      VOYAGE_API_KEY: ""
+      GROQ_API_KEY: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run Alembic migrations
+        run: alembic upgrade head
+
+      - name: Run tests
+        run: pytest tests/ -q --tb=short

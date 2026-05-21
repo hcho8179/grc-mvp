@@ -2,108 +2,155 @@
 {% block title %}Dashboard — Sentinel{% endblock %}
 {% block content %}
 
-<div class="mb-8">
-  <h1 class="text-3xl font-bold text-slate-900">Dashboard</h1>
-  <p class="text-slate-500 mt-1">AI-powered security questionnaire automation</p>
+<div class="flex items-start justify-between mb-10">
+  <div>
+    <p class="text-[10px] font-bold uppercase tracking-[0.2em] mb-2 bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">Overview</p>
+    <h1 class="text-4xl font-black tracking-tight text-white leading-none">Dashboard</h1>
+    <p class="text-slate-500 text-sm mt-2.5">AI-powered security questionnaire automation</p>
+  </div>
+  <div class="flex gap-3 mt-1">
+    <a href="/knowledge/upload"
+       class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold
+              bg-white/5 border border-white/10 text-slate-300
+              hover:bg-white/10 hover:border-white/20 hover:text-white transition-all duration-150">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
+      Upload Policy
+    </a>
+    <a href="/questionnaires/upload"
+       class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white
+              bg-gradient-to-r from-cyan-600 to-blue-600
+              shadow-[0_0_20px_rgba(6,182,212,0.35)] hover:shadow-[0_0_30px_rgba(6,182,212,0.55)]
+              hover:from-cyan-500 hover:to-blue-500 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-150">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+      New Questionnaire
+    </a>
+  </div>
 </div>
 
-{# ---- Stats cards ---- #}
+{# ── 4 colorful stat cards ───────────────────────────── #}
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
 
-  <div class="bg-white rounded-xl border border-slate-200 p-5">
-    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Questionnaires</p>
-    <p class="text-3xl font-bold text-slate-900 mt-1">{{ total_questionnaires }}</p>
+  {# Cyan — Questionnaires #}
+  <div class="bg-white/[0.04] backdrop-blur-sm border border-cyan-500/10 rounded-2xl p-5
+              hover:bg-cyan-500/[0.06] hover:border-cyan-500/20 hover:-translate-y-0.5
+              hover:shadow-[0_8px_30px_rgba(6,182,212,0.12)] transition-all duration-200">
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Total</p>
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-[0_0_14px_rgba(6,182,212,0.4)]">
+        <svg class="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z"/></svg>
+      </div>
+    </div>
+    <p class="text-5xl font-black text-cyan-300 tabular-nums leading-none mb-1">{{ total_questionnaires }}</p>
+    <p class="text-sm text-slate-500 font-medium">Questionnaires</p>
+    <div class="mt-4 h-px bg-gradient-to-r from-cyan-500/60 via-blue-500/30 to-transparent"></div>
   </div>
 
-  <div class="bg-white rounded-xl border border-slate-200 p-5">
-    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Questions Answered</p>
-    <p class="text-3xl font-bold text-indigo-600 mt-1">{{ total_answered }}</p>
-    <p class="text-xs text-slate-400 mt-0.5">{{ total_approved }} approved</p>
+  {# Violet — Answered #}
+  <div class="bg-white/[0.04] backdrop-blur-sm border border-violet-500/10 rounded-2xl p-5
+              hover:bg-violet-500/[0.06] hover:border-violet-500/20 hover:-translate-y-0.5
+              hover:shadow-[0_8px_30px_rgba(139,92,246,0.12)] transition-all duration-200">
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Answered</p>
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-[0_0_14px_rgba(139,92,246,0.4)]">
+        <svg class="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+      </div>
+    </div>
+    <p class="text-5xl font-black text-violet-300 tabular-nums leading-none mb-1">{{ total_answered }}</p>
+    <p class="text-sm text-slate-500 font-medium">{{ total_approved }} approved</p>
+    <div class="mt-4 h-px bg-gradient-to-r from-violet-500/60 via-purple-500/30 to-transparent"></div>
   </div>
 
-  <div class="bg-white rounded-xl border border-slate-200 p-5">
-    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Avg Confidence</p>
-    <p class="text-3xl font-bold mt-1
-      {% if avg_conf_pct >= 70 %}text-green-600{% elif avg_conf_pct >= 40 %}text-yellow-600{% else %}text-red-600{% endif %}">
-      {{ avg_conf_pct }}%
-    </p>
+  {# Dynamic confidence color #}
+  {% if avg_conf_pct >= 70 %}{% set cc='emerald' %}{% set cg='from-emerald-400 to-teal-500' %}{% set cs='rgba(16,185,129,0.4)' %}{% set ch='rgba(16,185,129,0.12)' %}
+  {% elif avg_conf_pct >= 40 %}{% set cc='amber' %}{% set cg='from-amber-400 to-orange-500' %}{% set cs='rgba(245,158,11,0.4)' %}{% set ch='rgba(245,158,11,0.12)' %}
+  {% else %}{% set cc='rose' %}{% set cg='from-rose-500 to-red-500' %}{% set cs='rgba(244,63,94,0.4)' %}{% set ch='rgba(244,63,94,0.12)' %}{% endif %}
+
+  <div class="bg-white/[0.04] backdrop-blur-sm border border-{{ cc }}-500/10 rounded-2xl p-5
+              hover:bg-{{ cc }}-500/[0.06] hover:border-{{ cc }}-500/20 hover:-translate-y-0.5
+              transition-all duration-200" style="--c:{{ ch }}">
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Confidence</p>
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br {{ cg }} flex items-center justify-center"
+           style="box-shadow: 0 0 14px {{ cs }}">
+        <svg class="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
+      </div>
+    </div>
+    <p class="text-5xl font-black tabular-nums leading-none mb-1 text-{{ cc }}-300">{{ avg_conf_pct }}%</p>
+    <p class="text-sm text-slate-500 font-medium">Avg confidence</p>
+    <div class="mt-4 h-px bg-gradient-to-r from-{{ cc }}-500/60 to-transparent"></div>
   </div>
 
-  <div class="bg-white rounded-xl border border-slate-200 p-5">
-    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Hours Saved</p>
-    <p class="text-3xl font-bold text-emerald-600 mt-1">{{ hours_saved }}</p>
-    <p class="text-xs text-slate-400 mt-0.5">@ 8 min/question</p>
+  {# Orange — Hours saved #}
+  <div class="bg-white/[0.04] backdrop-blur-sm border border-orange-500/10 rounded-2xl p-5
+              hover:bg-orange-500/[0.06] hover:border-orange-500/20 hover:-translate-y-0.5
+              hover:shadow-[0_8px_30px_rgba(249,115,22,0.12)] transition-all duration-200">
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Time Saved</p>
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-[0_0_14px_rgba(249,115,22,0.4)]">
+        <svg class="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+      </div>
+    </div>
+    <p class="text-5xl font-black text-orange-300 tabular-nums leading-none mb-1">{{ hours_saved }}</p>
+    <p class="text-sm text-slate-500 font-medium">Hours saved</p>
+    <div class="mt-4 h-px bg-gradient-to-r from-orange-500/60 via-rose-500/30 to-transparent"></div>
   </div>
 
 </div>
 
-{# ---- Quick actions ---- #}
-<div class="flex gap-3 mb-8">
-  <a href="/knowledge/upload"
-     class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-100 text-slate-700
-            text-sm font-medium hover:bg-slate-200 transition-colors">
-    ↑ Upload Policy
-  </a>
-  <a href="/questionnaires/upload"
-     class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white
-            text-sm font-medium hover:bg-indigo-700 transition-colors">
-    + New Questionnaire
-  </a>
-</div>
-
-{# ---- Recent questionnaires ---- #}
-<div class="bg-white rounded-xl border border-slate-200">
-  <div class="px-5 py-4 border-b border-slate-100">
-    <h2 class="text-sm font-semibold text-slate-700">Recent Questionnaires</h2>
+{# ── Recent questionnaires ─────────────────────────── #}
+<div class="bg-white/[0.04] backdrop-blur-sm border border-white/[0.07] rounded-2xl overflow-hidden">
+  <div class="px-6 py-5 border-b border-white/[0.05] flex items-center justify-between">
+    <div>
+      <h2 class="text-base font-bold text-white">Recent Questionnaires</h2>
+      <p class="text-xs text-slate-500 mt-0.5">Click any row to open</p>
+    </div>
+    <a href="/questionnaires" class="text-xs font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-cyan-400/10 transition-all duration-150">
+      View all <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg>
+    </a>
   </div>
-
   {% if recent %}
-  <table class="w-full text-sm">
+  <table class="w-full">
     <thead>
-      <tr class="border-b border-slate-100 text-left">
-        <th class="px-5 py-3 font-medium text-slate-500 text-xs uppercase tracking-wide">Name</th>
-        <th class="px-5 py-3 font-medium text-slate-500 text-xs uppercase tracking-wide">Customer</th>
-        <th class="px-5 py-3 font-medium text-slate-500 text-xs uppercase tracking-wide">Status</th>
-        <th class="px-5 py-3 font-medium text-slate-500 text-xs uppercase tracking-wide">Questions</th>
-        <th class="px-5 py-3 font-medium text-slate-500 text-xs uppercase tracking-wide">Uploaded</th>
+      <tr class="border-b border-white/[0.05]">
+        <th class="px-6 py-3.5 text-left text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Name</th>
+        <th class="px-6 py-3.5 text-left text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Customer</th>
+        <th class="px-6 py-3.5 text-left text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Status</th>
+        <th class="px-6 py-3.5 text-left text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Questions</th>
+        <th class="px-6 py-3.5 text-left text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Date</th>
       </tr>
     </thead>
     <tbody>
       {% for q in recent %}
-      <tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-        <td class="px-5 py-3">
-          <a href="/questionnaires/{{ q.id }}" class="text-indigo-600 hover:underline font-medium">
-            {{ q.name }}
-          </a>
+      <tr class="border-b border-white/[0.04] hover:bg-cyan-500/[0.04] transition-colors cursor-pointer group" onclick="window.location='/questionnaires/{{ q.id }}'">
+        <td class="px-6 py-4"><span class="font-semibold text-white/90 text-sm group-hover:text-cyan-300 transition-colors">{{ q.name }}</span></td>
+        <td class="px-6 py-4 text-sm text-slate-500">{{ q.customer_name or "—" }}</td>
+        <td class="px-6 py-4">
+          {% if q.status.value == "draft" %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20"><span class="w-1.5 h-1.5 rounded-full bg-slate-500 inline-block"></span>Draft</span>
+          {% elif q.status.value == "in_progress" %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-400/10 text-amber-400 border border-amber-400/20"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-pulse"></span>In Progress</span>
+          {% elif q.status.value == "complete" %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>Complete</span>{% endif %}
         </td>
-        <td class="px-5 py-3 text-slate-500">{{ q.customer_name or "—" }}</td>
-        <td class="px-5 py-3">
-          {% if q.status.value == "draft" %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Draft</span>
-          {% elif q.status.value == "in_progress" %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">In Progress</span>
-          {% elif q.status.value == "complete" %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">Complete</span>
-          {% endif %}
-        </td>
-        <td class="px-5 py-3 text-slate-700">{{ q.question_count }}</td>
-        <td class="px-5 py-3 text-slate-400">{{ q.created_at.strftime('%b %d, %Y') }}</td>
+        <td class="px-6 py-4 text-sm font-bold text-white/60 tabular-nums">{{ q.question_count }}</td>
+        <td class="px-6 py-4 text-xs text-slate-600">{{ q.created_at.strftime('%b %d, %Y') }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <div class="px-5 py-12 text-center">
-    <p class="text-slate-400 mb-3">No questionnaires yet.</p>
-    <a href="/questionnaires/upload" class="text-indigo-600 hover:underline text-sm font-medium">
-      Upload your first questionnaire →
+  <div class="py-20 text-center">
+    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/20 flex items-center justify-center mx-auto mb-5 shadow-[0_0_20px_rgba(6,182,212,0.1)]">
+      <svg class="w-8 h-8 text-cyan-500/60" fill="none" viewBox="0 0 24 24" stroke-width="1.3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/></svg>
+    </div>
+    <p class="text-white/60 font-bold text-base mb-1">No questionnaires yet</p>
+    <p class="text-slate-600 text-sm mb-6">Upload your first vendor questionnaire to get started.</p>
+    <a href="/questionnaires/upload"
+       class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-cyan-600 to-blue-600 shadow-[0_0_20px_rgba(6,182,212,0.35)] hover:shadow-[0_0_30px_rgba(6,182,212,0.55)] hover:-translate-y-0.5 transition-all duration-150">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+      Upload your first questionnaire
     </a>
   </div>
   {% endif %}
 </div>
 
-{% if total_cost > 0 %}
-<p class="text-xs text-slate-400 mt-4">Total AI cost to date: ${{ "%.4f"|format(total_cost) }}</p>
-{% endif %}
+{% if total_cost > 0 %}<p class="text-xs text-slate-700 mt-4 text-right">Total AI cost: ${{ "%.4f"|format(total_cost) }}</p>{% endif %}
 
 {% endblock %}

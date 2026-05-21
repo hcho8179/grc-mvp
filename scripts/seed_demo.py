@@ -25,7 +25,7 @@ from sqlalchemy import text
 
 from app.db import SessionLocal
 from app.models import (
-    Document, FileType, KnowledgeChunk, LLMCall, Questionnaire, Question,
+    Document, FileType, KnowledgeChunk, LLMCall, Organization, Questionnaire, Question,
     QuestionStatus, SourceType,
 )
 from app.services.chunking import chunk_text
@@ -210,28 +210,52 @@ MEGABANK_QUESTIONS = [
 # ---------------------------------------------------------------------------
 
 async def seed() -> None:
-    print("⚠️  This will DELETE all data in the database.")
+    db = SessionLocal()
+
+    # Show existing orgs
+    orgs = db.query(Organization).order_by(Organization.id).all()
+    if not orgs:
+        print("No organizations found. Register an account at http://localhost:5173/register first.")
+        db.close()
+        return
+
+    print("Existing organizations:")
+    for org in orgs:
+        print(f"  [{org.id}] {org.name}  (slug: {org.slug})")
+    org_id_str = input("\nEnter org ID to seed demo data into: ").strip()
+    try:
+        org_id = int(org_id_str)
+        org = next(o for o in orgs if o.id == org_id)
+    except (ValueError, StopIteration):
+        print("Invalid org ID. Aborted.")
+        db.close()
+        return
+
+    print(f"\nSeeding into: {org.name} (id={org.id})")
+    print("This will DELETE existing knowledge + questionnaires for this org (users are kept).")
     confirm = input("Type 'yes' to continue: ").strip().lower()
     if confirm != "yes":
         print("Aborted.")
+        db.close()
         return
 
-    db = SessionLocal()
     provider = get_embedding_provider()
 
-    print("\n🗑️  Clearing existing data…")
-    db.execute(text("DELETE FROM llm_calls"))
-    db.execute(text("DELETE FROM question_citations"))
-    db.execute(text("DELETE FROM questions"))
-    db.execute(text("DELETE FROM questionnaires"))
-    db.execute(text("DELETE FROM knowledge_chunks"))
-    db.execute(text("DELETE FROM documents"))
+    # Clear only this org's data
+    print("\nClearing existing data for this org…")
+    existing_qs = db.query(Questionnaire).filter(Questionnaire.org_id == org_id).all()
+    for qs in existing_qs:
+        db.delete(qs)
+    existing_docs = db.query(Document).filter(Document.org_id == org_id).all()
+    for d in existing_docs:
+        db.delete(d)
+    db.execute(text(f"DELETE FROM llm_calls WHERE org_id = {org_id}"))
     db.commit()
 
     # -----------------------------------------------------------------------
     # Policy documents
     # -----------------------------------------------------------------------
-    print("📄  Creating policy documents…")
+    print("Creating policy documents…")
 
     policies = [
         ("Acme Corp — Information Security Policy.docx", INFO_SEC_POLICY),
@@ -240,7 +264,6 @@ async def seed() -> None:
     ]
 
     for filename, content in policies:
-        # Create a proper DOCX
         doc_obj = DocxDocument()
         for para in content.strip().split("\n\n"):
             doc_obj.add_paragraph(para.strip())
@@ -257,6 +280,7 @@ async def seed() -> None:
             filename=filename,
             file_type=FileType.docx,
             chunk_count=len(chunks),
+            org_id=org_id,
         )
         db.add(document)
         db.flush()
@@ -275,12 +299,13 @@ async def seed() -> None:
     # -----------------------------------------------------------------------
     # Past Q&A pairs
     # -----------------------------------------------------------------------
-    print("💬  Creating past Q&A knowledge base…")
+    print("Creating past Q&A knowledge base…")
 
     qa_doc = Document(
         filename="Acme Corp — Past Questionnaire Answers.xlsx",
         file_type=FileType.xlsx,
         chunk_count=len(QA_PAIRS),
+        org_id=org_id,
     )
     db.add(qa_doc)
     db.flush()
@@ -298,12 +323,12 @@ async def seed() -> None:
             embedding=emb,
         ))
     db.commit()
-    print(f"   ✓ {len(QA_PAIRS)} Q&A chunks stored")
+    print(f"   {len(QA_PAIRS)} Q&A chunks stored")
 
     # -----------------------------------------------------------------------
     # Sample questionnaire (MegaBank)
     # -----------------------------------------------------------------------
-    print("📋  Creating MegaBank Vendor Assessment questionnaire…")
+    print("Creating MegaBank Vendor Assessment questionnaire…")
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -334,6 +359,7 @@ async def seed() -> None:
         question_count=len(MEGABANK_QUESTIONS),
         raw_xlsx_blob=xlsx_bytes,
         answer_col_index=2,  # column C (0-based)
+        org_id=org_id,
     )
     db.add(questionnaire)
     db.flush()
@@ -347,15 +373,17 @@ async def seed() -> None:
         ))
     db.commit()
 
-    print(f"   ✓ {len(MEGABANK_QUESTIONS)}-question questionnaire created (id={questionnaire.id})")
+    print(f"   {len(MEGABANK_QUESTIONS)}-question questionnaire created (id={questionnaire.id})")
 
-    # Summary
     from app.models import KnowledgeChunk as KC
-    total_chunks = db.query(KC).count()
-    print(f"\n✅  Seed complete!")
-    print(f"   Knowledge base: {total_chunks} chunks")
-    print(f"   Questionnaire:  '{questionnaire.name}' — ready to generate answers")
-    print(f"\n   Run: POST /questionnaires/{questionnaire.id}/generate")
+    total_chunks = db.query(KC).filter(KC.document_id.in_(
+        db.query(Document.id).filter(Document.org_id == org_id)
+    )).count()
+    print(f"\nSeed complete!")
+    print(f"   Org:            {org.name} (id={org.id})")
+    print(f"   Knowledge base: {total_chunks} chunks (3 policies + 30 Q&A pairs)")
+    print(f"   Questionnaire:  '{questionnaire.name}' ({len(MEGABANK_QUESTIONS)} questions)")
+    print(f"\nOpen http://localhost:5173 -> log in -> open the questionnaire -> click Generate Answers")
 
     db.close()
 

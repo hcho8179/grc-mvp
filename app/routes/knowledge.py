@@ -29,7 +29,7 @@ _xlsx_tmp: dict[str, dict] = {}
 
 @router.get("", response_class=HTMLResponse)
 async def knowledge_list(request: Request, db: Session = Depends(get_db)):
-    documents = db.query(Document).order_by(Document.created_at.desc()).all()
+    documents = db.query(Document).filter(Document.deleted_at == None).order_by(Document.created_at.desc()).all()
     return templates.TemplateResponse(
         request,
         "knowledge/list.html",
@@ -66,7 +66,8 @@ async def upload_document(
 
     if not file_bytes:
         return _error("Uploaded file is empty.")
-
+    if len(file_bytes) > 20 * 1024 * 1024:
+        return _error("File too large — maximum size is 20 MB.")
     if ext not in {"pdf", "docx", "xlsx"}:
         return _error(f"Unsupported file type '.{ext}'. Please upload PDF, DOCX, or XLSX.")
 

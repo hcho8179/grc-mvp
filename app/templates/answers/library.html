@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Answer Library — Sentinel{% endblock %}
+{% block content %}
+
+<div class="flex items-start justify-between mb-8">
+  <div>
+    <p class="text-[10px] font-bold uppercase tracking-[0.2em] mb-2 text-orange-400">Answer Library</p>
+    <h1 class="text-4xl font-black tracking-tight text-white leading-none mb-1">Answer Library</h1>
+    <p class="text-slate-500 text-sm">
+      <span class="font-bold text-slate-300">{{ total }}</span> approved answer{{ 's' if total != 1 else '' }}
+      <span class="mx-1.5 text-slate-700">·</span>
+      <span class="font-bold text-slate-300">{{ total_reuses }}</span> total reuse{{ 's' if total_reuses != 1 else '' }}
+    </p>
+  </div>
+</div>
+
+<div class="flex flex-wrap gap-3 mb-6">
+  <form method="get" action="/answers/library" class="flex gap-2 items-center">
+    <div class="relative">
+      <div class="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
+        <svg class="w-4 h-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
+      </div>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search questions or answers…"
+             class="pl-10 pr-4 py-2.5 text-sm border border-white/10 rounded-xl w-72 font-medium bg-white/[0.05] text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500/30 hover:border-white/20 transition-colors"/>
+    </div>
+    {% if active_category %}<input type="hidden" name="category" value="{{ active_category }}"/>{% endif %}
+    <button type="submit"
+            class="px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-orange-600 to-amber-500 shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)] hover:-translate-y-0.5 transition-all duration-150">
+      Search
+    </button>
+    {% if q or active_category %}<a href="/answers/library" class="text-sm font-semibold text-slate-500 hover:text-slate-300 transition-colors">Clear</a>{% endif %}
+  </form>
+</div>
+
+{% if categories %}
+<div class="flex flex-wrap gap-2 mb-6">
+  <a href="/answers/library{% if q %}?q={{ q }}{% endif %}"
+     class="px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-150
+            {% if not active_category %}bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-[0_0_10px_rgba(249,115,22,0.3)]
+            {% else %}bg-white/[0.05] border border-white/10 text-slate-500 hover:text-slate-200 hover:border-white/20{% endif %}">
+    All ({{ total }})
+  </a>
+  {% for cat, cnt in categories %}
+  <a href="/answers/library?category={{ cat | urlencode }}{% if q %}&q={{ q }}{% endif %}"
+     class="px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-150
+            {% if active_category == cat %}bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-[0_0_10px_rgba(249,115,22,0.3)]
+            {% else %}bg-white/[0.05] border border-white/10 text-slate-500 hover:text-slate-200 hover:border-white/20{% endif %}">
+    {{ cat }} ({{ cnt }})
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if answers %}
+<div class="bg-white/[0.04] backdrop-blur-sm border border-orange-500/10 rounded-2xl overflow-hidden">
+  <table class="w-full">
+    <thead>
+      <tr class="border-b border-white/[0.05]">
+        <th class="px-6 py-4 text-left text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Question</th>
+        <th class="px-6 py-4 text-left text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em]">Answer</th>
+        <th class="px-6 py-4 text-left text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] w-36">Category</th>
+        <th class="px-6 py-4 text-center text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] w-20">Reuses</th>
+        <th class="px-6 py-4 text-left text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] w-28">Added</th>
+        <th class="px-6 py-4 w-20"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in answers %}
+      <tr class="border-b border-white/[0.04] hover:bg-orange-500/[0.04] transition-colors align-top">
+        <td class="px-6 py-4 max-w-[240px]"><p class="leading-relaxed line-clamp-3 text-xs font-semibold text-white/80">{{ a.question_text }}</p></td>
+        <td class="px-6 py-4 max-w-[320px]"><p class="text-xs leading-relaxed line-clamp-4 text-slate-400">{{ a.answer_text }}</p></td>
+        <td class="px-6 py-4">
+          {% if a.answer_category %}<span class="inline-block px-2.5 py-1 rounded-full text-xs font-bold bg-orange-500/10 text-orange-400 border border-orange-500/20">{{ a.answer_category }}</span>
+          {% else %}<span class="text-slate-700 text-xs">—</span>{% endif %}
+        </td>
+        <td class="px-6 py-4 text-center">
+          {% if a.times_reused > 0 %}<span class="inline-block px-2.5 py-1 rounded-full text-xs font-bold tabular-nums bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">{{ a.times_reused }}</span>
+          {% else %}<span class="text-slate-700 text-xs">0</span>{% endif %}
+        </td>
+        <td class="px-6 py-4 text-xs text-slate-600 font-medium whitespace-nowrap">{{ a.created_at.strftime('%b %d, %Y') }}</td>
+        <td class="px-6 py-4 text-right">
+          <form method="post" action="/answers/{{ a.id }}/archive" onsubmit="return confirm('Archive this answer?')">
+            <button type="submit" class="text-xs font-semibold text-slate-700 hover:text-rose-400 transition-colors">Archive</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% elif q or active_category %}
+<div class="bg-white/[0.04] border border-white/[0.07] rounded-2xl py-16 text-center">
+  <p class="text-white/60 font-black text-lg mb-2">No answers match your search</p>
+  <a href="/answers/library" class="text-sm font-bold text-orange-400 hover:text-orange-300 mt-2 inline-block transition-colors">Clear filters</a>
+</div>
+
+{% else %}
+<div class="bg-white/[0.04] backdrop-blur-sm border border-orange-500/10 rounded-2xl py-24 text-center">
+  <div class="w-20 h-20 rounded-3xl bg-gradient-to-br from-orange-500/10 to-amber-500/10 border border-orange-500/20 flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(249,115,22,0.1)]">
+    <svg class="w-10 h-10 text-orange-500/50" fill="none" viewBox="0 0 24 24" stroke-width="1.3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z"/></svg>
+  </div>
+  <p class="text-white/70 font-black text-xl mb-2">Your answer library is empty</p>
+  <p class="text-slate-600 text-sm mb-8 max-w-xs mx-auto">Approve answers in a questionnaire to build a reusable library.</p>
+  <a href="/questionnaires"
+     class="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-orange-600 to-amber-500 shadow-[0_0_20px_rgba(249,115,22,0.35)] hover:shadow-[0_0_30px_rgba(249,115,22,0.55)] hover:-translate-y-0.5 transition-all duration-150">
+    Go to Questionnaires
+  </a>
+</div>
+{% endif %}
+
+{% endblock %}

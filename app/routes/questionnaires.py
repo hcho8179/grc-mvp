@@ -14,6 +14,7 @@ from fastapi.responses import Response
 from app.config import get_settings
 from app.db import SessionLocal, get_db
 from app.models import (
+    ApprovedAnswer,
     ConfidenceLevel,
     Document,
     FileType,
@@ -21,10 +22,12 @@ from app.models import (
     LLMCall,
     Questionnaire,
     QuestionnaireStatus,
+    QuestionnaireTemplate,
     Question,
     QuestionStatus,
     SourceType,
 )
+from app.services.answer_library import detect_category, find_similar_answers
 from app.services.embeddings import get_embedding_provider
 from app.services.export import export_questionnaire_to_xlsx
 from app.services.generation import estimate_cost, generate_answer, get_llm_provider
@@ -33,6 +36,11 @@ from app.services.parsing import (
     parse_xlsx_questionnaire_preview,
 )
 from app.services.retrieval import retrieve_relevant_chunks
+from app.services.templates import (
+    find_template_by_customer,
+    list_templates,
+    save_template,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -73,7 +81,7 @@ def _render_row(request: Request, question: Question, questionnaire_id: int) -> 
 
 @router.get("", response_class=HTMLResponse)
 async def questionnaire_list(request: Request, db: Session = Depends(get_db)):
-    questionnaires = db.query(Questionnaire).order_by(Questionnaire.created_at.desc()).all()
+    questionnaires = db.query(Questionnaire).filter(Questionnaire.deleted_at == None).order_by(Questionnaire.created_at.desc()).all()
     return templates.TemplateResponse(
         request, "questionnaires/list.html", {"questionnaires": questionnaires}
     )
@@ -106,6 +114,8 @@ async def upload_questionnaire(
 
     if not file_bytes:
         return _error("Uploaded file is empty.")
+    if len(file_bytes) > 20 * 1024 * 1024:
+        return _error("File too large — maximum size is 20 MB.")
     if Path(filename).suffix.lower() != ".xlsx":
         return _error("Only XLSX files are supported for questionnaires.")
     if not name.strip():
@@ -143,10 +153,23 @@ async def column_picker(temp_id: str, request: Request):
             request, "questionnaires/upload.html", {"error": str(exc)}, status_code=400
         )
 
+    db: Session = SessionLocal()
+    suggested_template = None
+    try:
+        suggested_template = find_template_by_customer(meta.get("customer_name"), db)
+    finally:
+        db.close()
+
     return templates.TemplateResponse(
         request,
         "questionnaires/column_picker.html",
-        {"temp_id": temp_id, "filename": meta["filename"], "name": meta["name"], "preview": preview},
+        {
+            "temp_id": temp_id,
+            "filename": meta["filename"],
+            "name": meta["name"],
+            "preview": preview,
+            "suggested_template": suggested_template,
+        },
     )
 
 
@@ -187,6 +210,7 @@ async def finalize_upload(
         question_count=len(parsed_questions),
         raw_xlsx_blob=meta["bytes"],
         answer_col_index=ans_col,
+        question_col_index=question_col,
     )
     db.add(questionnaire)
     db.flush()
@@ -203,6 +227,30 @@ async def finalize_upload(
     db.commit()
     del _upload_tmp[temp_id]
     return RedirectResponse(url=f"/questionnaires/{questionnaire.id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Templates list page  (must be declared before /{questionnaire_id} to avoid
+# Starlette matching "templates" as an integer questionnaire_id)
+# ---------------------------------------------------------------------------
+
+@router.get("/templates", response_class=HTMLResponse)
+async def templates_list(request: Request, db: Session = Depends(get_db)):
+    all_templates = list_templates(db)
+    return templates.TemplateResponse(
+        request,
+        "questionnaires/templates.html",
+        {"templates": all_templates},
+    )
+
+
+@router.post("/templates/{template_id}/delete")
+async def delete_template(template_id: int, db: Session = Depends(get_db)):
+    tmpl = db.query(QuestionnaireTemplate).filter(QuestionnaireTemplate.id == template_id).first()
+    if tmpl:
+        db.delete(tmpl)
+        db.commit()
+    return RedirectResponse(url="/questionnaires/templates", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +272,8 @@ async def questionnaire_detail(
         .all()
     )
     return templates.TemplateResponse(
-        request, "questionnaires/detail.html", {"questionnaire": q, "questions": questions}
+        request, "questionnaires/detail.html",
+        {"questionnaire": q, "questions": questions, "questionnaire_id": questionnaire_id},
     )
 
 
@@ -397,24 +446,58 @@ async def approve_question(
     question.status = QuestionStatus.approved
     db.commit()
 
-    # Self-learning: embed the approved Q+A and add to knowledge base
+    # Self-learning: embed and save to both RAG knowledge base and answer library
     if question.final_answer:
         try:
             doc = _get_or_create_approved_doc(db)
             chunk_text = f"Q: {question.question_text}\nA: {question.final_answer}"
             provider = get_embedding_provider()
-            embeddings = await provider.embed([chunk_text])
+
+            # Embed in parallel: Q+A for RAG retrieval, question-only for answer reuse
+            qa_embs, q_embs = await asyncio.gather(
+                provider.embed([chunk_text]),
+                provider.embed([question.question_text]),
+            )
+
             db.add(KnowledgeChunk(
                 document_id=doc.id,
                 source_document=_APPROVED_DOC_NAME,
                 source_type=SourceType.approved_answer,
                 text=chunk_text,
-                embedding=embeddings[0],
+                embedding=qa_embs[0],
             ))
             doc.chunk_count += 1
+
+            # Upsert into answer library
+            conf_map = {"high": 1.0, "medium": 0.67, "low": 0.33}
+            conf_score = conf_map.get(question.confidence.value, 0.5) if question.confidence else None
+
+            existing = (
+                db.query(ApprovedAnswer)
+                .filter(ApprovedAnswer.question_text == question.question_text)
+                .first()
+            )
+            if existing:
+                existing.answer_text = question.final_answer
+                existing.cited_chunk_ids = question.cited_chunk_ids
+                existing.confidence_score = conf_score
+                existing.embedding = q_embs[0]
+                existing.status = "active"
+                existing.source_question_id = question.id
+            else:
+                db.add(ApprovedAnswer(
+                    question_text=question.question_text,
+                    answer_text=question.final_answer,
+                    answer_category=detect_category(question.question_text),
+                    cited_chunk_ids=question.cited_chunk_ids,
+                    confidence_score=conf_score,
+                    embedding=q_embs[0],
+                    source_question_id=question.id,
+                ))
+
             db.commit()
         except Exception:
-            pass  # KB write failure must not break the approval
+            pass  # KB/library write failure must not break the approval
 
     return _render_row(request, question, questionnaire_id)
 
@@ -478,11 +561,13 @@ async def export_questionnaire(questionnaire_id: int, db: Session = Depends(get_
     except ValueError as exc:
         return HTMLResponse(f"<p>Export failed: {exc}</p>", status_code=400)
 
+    from datetime import date
     safe_name = q.name.replace(" ", "_").replace("/", "-")
+    today = date.today().strftime("%Y-%m-%d")
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}_filled.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}_filled_{today}.xlsx"'},
     )
 
 
@@ -497,3 +582,39 @@ async def delete_questionnaire(questionnaire_id: int, db: Session = Depends(get_
         db.delete(q)
         db.commit()
     return RedirectResponse(url="/questionnaires", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Save as template (HTMX POST — returns confirmation fragment)
+# ---------------------------------------------------------------------------
+
+@router.post("/{questionnaire_id}/save-template", response_class=HTMLResponse)
+async def save_as_template(
+    questionnaire_id: int,
+    request: Request,
+    template_name: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Questionnaire).filter(Questionnaire.id == questionnaire_id).first()
+    if not q or not q.raw_xlsx_blob:
+        return HTMLResponse(
+            '<p class="text-xs text-red-500">Questionnaire not found.</p>', status_code=404
+        )
+
+    tmpl = save_template(
+        name=template_name,
+        customer_name=q.customer_name,
+        question_col=q.question_col_index or 0,
+        answer_col=q.answer_col_index,
+        xlsx_bytes=q.raw_xlsx_blob,
+        db=db,
+    )
+    q.template_id = tmpl.id
+    db.commit()
+
+    return HTMLResponse(
+        f'<span class="text-xs text-emerald-600 font-medium">'
+        f'Template &ldquo;{tmpl.name}&rdquo; saved.</span>'
+    )
+
+
