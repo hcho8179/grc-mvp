@@ -7,7 +7,7 @@ The platform is not intended to be just another AI autofill tool. The longer-ter
 The core problem is not only answering questionnaires faster, but reducing duplicated work, inconsistent responses, scattered knowledge, and operational bottlenecks during enterprise security reviews.
 
 
-# Sentinel GRC — Advisor Brief
+# Sentinel GRC — Brief
 
 Hi! I'm building a B2B SaaS tool to help security teams respond to customer security questionnaires faster. I'd love your honest feedback as someone who does this work day-to-day.
 
