@@ -432,7 +432,7 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
               <span className="font-semibold">No knowledge base found.</span>
               {' '}There are no policy documents to draw from.{' '}
               <a href="/knowledge/upload" className="underline font-semibold hover:opacity-70">Upload your policies</a>
-              {' '}to enable automated drafting, or write this answer manually below.
+              {' '}to get suggested answers, or write this answer manually below.
             </span>
           </div>
         )}

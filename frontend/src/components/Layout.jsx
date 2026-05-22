@@ -175,7 +175,7 @@ export default function Layout() {
           </div>
           <div>
             <p className="font-bold text-sm leading-none" style={{ color: t.text }}>Greenlight</p>
-            <p className="text-xs mt-0.5" style={{ color: t.text3 }}>GRC Automation</p>
+            <p className="text-xs mt-0.5" style={{ color: t.text3 }}>Close deals faster</p>
           </div>
         </div>
 

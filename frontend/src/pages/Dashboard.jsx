@@ -54,7 +54,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: t.text }}>Dashboard</h1>
-            <p className="text-sm mt-0.5" style={{ color: t.text2 }}>Security questionnaire automation</p>
+            <p className="text-sm mt-0.5" style={{ color: t.text2 }}>Close deals faster</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => nav('/knowledge')}

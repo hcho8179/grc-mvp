@@ -18,6 +18,7 @@ export default function UploadKnowledge() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
+  const [replacePrompt, setReplacePrompt] = useState(null) // {existing_id, existing_filename}
 
   const handleFile = (f) => {
     if (!f) return
@@ -28,14 +29,37 @@ export default function UploadKnowledge() {
 
   const handleUpload = async () => {
     if (!file || uploading) return
-    setError(''); setUploading(true)
+    setError(''); setReplacePrompt(null); setUploading(true)
     try {
       const fd = new FormData(); fd.append('file', file)
       const data = await api.uploadKnowledge(fd)
       setResult(data)
       setTimeout(() => nav('/knowledge'), 2500)
     } catch (e) {
+      // Server returned suggest_replace — parse from raw fetch since api.js throws on !ok
+      try {
+        const raw = await fetch('/api/knowledge/upload', {
+          method: 'POST', credentials: 'include',
+          body: (() => { const fd = new FormData(); fd.append('file', file); return fd })(),
+        })
+        const json = await raw.json()
+        if (json.suggest_replace) { setReplacePrompt({ existing_id: json.existing_id, existing_filename: json.existing_filename }); setUploading(false); return }
+      } catch (_) {}
       setError(e.message || 'Upload failed.')
+    }
+    setUploading(false)
+  }
+
+  const handleConfirmReplace = async () => {
+    if (!file || !replacePrompt) return
+    setUploading(true); setReplacePrompt(null)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const data = await api.replaceKnowledge(replacePrompt.existing_id, fd)
+      setResult(data)
+      setTimeout(() => nav('/knowledge'), 2500)
+    } catch (e) {
+      setError(e.message || 'Replace failed.')
     }
     setUploading(false)
   }
@@ -62,6 +86,31 @@ export default function UploadKnowledge() {
           <div className="mb-5 px-4 py-3 rounded-xl text-sm font-medium"
                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
             {error}
+          </div>
+        )}
+
+        {replacePrompt && (
+          <div className="mb-5 px-4 py-4 rounded-xl text-sm"
+               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
+            <p className="font-semibold mb-1" style={{ color: '#92400e' }}>
+              This file looks like an update to an existing document
+            </p>
+            <p className="text-xs mb-3" style={{ color: '#b45309' }}>
+              <strong>{replacePrompt.existing_filename}</strong> already exists in your knowledge base.
+              Do you want to replace it with the new version? All existing chunks will be re-embedded.
+            </p>
+            <div className="flex items-center gap-2">
+              <button onClick={handleConfirmReplace}
+                      className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90"
+                      style={{ background: '#d97706' }}>
+                Yes, replace it
+              </button>
+              <button onClick={() => setReplacePrompt(null)}
+                      className="px-4 py-1.5 rounded-lg text-xs font-semibold hover:opacity-70"
+                      style={{ color: '#b45309' }}>
+                No, upload as new
+              </button>
+            </div>
           </div>
         )}
 

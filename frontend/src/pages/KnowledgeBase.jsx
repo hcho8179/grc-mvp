@@ -11,15 +11,24 @@ const FILE_COLOR = {
   xlsx: { text: '#22c55e', bg: 'rgba(34,197,94,0.1)',  border: 'rgba(34,197,94,0.2)'  },
 }
 
+function staleness(dateStr) {
+  if (!dateStr) return null
+  const days = Math.floor((Date.now() - new Date(dateStr)) / 86_400_000)
+  if (days >= 180) return { label: `${Math.floor(days/30)}mo`, color: '#ef4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)', title: 'Content not updated in 6+ months — consider refreshing this document' }
+  if (days >= 90)  return { label: `${Math.floor(days/30)}mo`, color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)', title: 'Content not updated in 3+ months — verify this document is still current' }
+  return null
+}
+
 export default function KnowledgeBase() {
   const { t } = useTheme()
   const { user } = useAuth()
-  const canDelete = user?.role === 'owner' || user?.role === 'admin'
+  const canManage = user?.role === 'owner' || user?.role === 'admin'
   const nav = useNavigate()
   const [docs, setDocs] = useState([])
   const [page, setPage] = useState(1)
   const [meta, setMeta] = useState({ total: 0, pages: 1 })
   const [loading, setLoading] = useState(true)
+  const [replacing, setReplacing] = useState(null)
 
   const load = (p = page) => {
     setLoading(true)
@@ -37,6 +46,22 @@ export default function KnowledgeBase() {
     if (!confirm(`Delete "${name}" and all its chunks?`)) return
     await api.deleteKnowledge(id)
     load()
+  }
+
+  const handleReplace = async (id, name, file) => {
+    if (!file) return
+    if (!confirm(`Replace "${name}" with "${file.name}"?\n\nAll existing chunks and feedback signals for this document will be removed and re-generated.`)) return
+    setReplacing(id)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      await api.replaceKnowledge(id, fd)
+      load()
+    } catch (err) {
+      alert(err?.message || 'Replace failed — check file type (PDF or DOCX only)')
+    } finally {
+      setReplacing(null)
+    }
   }
 
   return (
@@ -110,7 +135,8 @@ export default function KnowledgeBase() {
                 </thead>
                 <tbody>
                   {docs.map(d => {
-                    const fc = FILE_COLOR[d.file_type] || FILE_COLOR.pdf
+                    const fc    = FILE_COLOR[d.file_type] || FILE_COLOR.pdf
+                    const stale = d.is_starter ? null : staleness(d.content_updated_at)
                     return (
                       <tr key={d.id} className="transition-colors"
                           style={{ borderBottom: `1px solid ${t.borderColor}` }}
@@ -122,10 +148,17 @@ export default function KnowledgeBase() {
                                  style={{ background: fc.bg, border: `1px solid ${fc.border}` }}>
                               <Icon name="doc" size={14} color={fc.text} />
                             </div>
-                            <div>
+                            <div className="flex items-center gap-2">
                               <span className="font-medium" style={{ color: t.text }}>
                                 {d.is_starter ? d.filename.replace('[Starter] ', '').replace('.txt', '') : d.filename}
                               </span>
+                              {stale && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold cursor-default"
+                                      title={stale.title}
+                                      style={{ background: stale.bg, border: `1px solid ${stale.border}`, color: stale.color }}>
+                                  ⚠ {stale.label}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -151,11 +184,22 @@ export default function KnowledgeBase() {
                         <td className="px-5 py-4 text-xs" style={{ color: t.text3 }}>
                           {new Date(d.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </td>
-                        <td className="px-5 py-4 text-right">
-                          {canDelete && (
-                            <button onClick={() => handleDelete(d.id, d.filename)}
-                                    className="text-xs font-medium transition-colors hover:text-red-500"
-                                    style={{ color: t.text3 }}>Delete</button>
+                        <td className="px-5 py-4">
+                          {canManage && !d.is_starter && (
+                            <div className="flex items-center justify-end gap-3">
+                              {/* Replace: hidden file input triggered by label */}
+                              <label className="cursor-pointer text-xs font-medium transition-colors hover:opacity-70"
+                                     style={{ color: t.primary }}
+                                     title="Upload a new version of this document — re-embeds all chunks">
+                                {replacing === d.id ? 'Replacing…' : 'Replace'}
+                                <input type="file" accept=".pdf,.docx" className="hidden"
+                                       disabled={replacing === d.id}
+                                       onChange={e => { handleReplace(d.id, d.filename, e.target.files?.[0]); e.target.value = '' }} />
+                              </label>
+                              <button onClick={() => handleDelete(d.id, d.filename)}
+                                      className="text-xs font-medium transition-colors hover:text-red-500"
+                                      style={{ color: t.text3 }}>Delete</button>
+                            </div>
                           )}
                         </td>
                       </tr>

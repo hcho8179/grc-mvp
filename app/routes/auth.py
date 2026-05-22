@@ -15,6 +15,7 @@ from app.db import get_db
 from app.models import Invite, Organization, User
 from app.services.audit import log_event
 from app.services.email import send_password_reset, send_verification_email
+from app.utils import LoginVelocityGuard, IPSprayGuard, real_ip
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -156,11 +157,34 @@ async def register(request: Request, req: RegisterRequest, response: Response, b
 @router.post("/login")
 @limiter.limit("10/minute")
 def login(request: Request, req: LoginRequest, response: Response, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == req.email.lower().strip()).first()
+    email = req.email.lower().strip()
+    ip    = real_ip(request)
+
+    # Layer 1 — per-IP spray guard: blocks password spraying across many emails
+    if IPSprayGuard.is_blocked(ip):
+        log_event(db, org_id=0, user_id=None, user_email=email,
+                  action="auth.login_blocked", resource_type="auth",
+                  detail={"reason": "ip_spray_guard", "ip": ip})
+        raise HTTPException(status_code=429, detail="Too many failed attempts — try again in 15 minutes")
+
+    # Layer 2 — per-email velocity guard: blocks credential stuffing across rotating IPs
+    if LoginVelocityGuard.is_locked(email):
+        log_event(db, org_id=0, user_id=None, user_email=email,
+                  action="auth.login_blocked", resource_type="auth",
+                  detail={"reason": "email_velocity_guard", "ip": ip})
+        raise HTTPException(status_code=429, detail="Too many failed attempts — try again in 15 minutes")
+
+    user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(req.password, user.hashed_password):
+        LoginVelocityGuard.record_failure(email)
+        IPSprayGuard.record_failure(ip)
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account disabled")
+
+    # Successful login: clear the per-email failure counter
+    # (IPSprayGuard is intentionally NOT reset — one success doesn't undo spray activity)
+    LoginVelocityGuard.reset_on_success(email)
 
     # Transparent migration: upgrade legacy bcrypt hash to Argon2 on login
     if needs_rehash(user.hashed_password):

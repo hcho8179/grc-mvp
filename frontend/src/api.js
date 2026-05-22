@@ -77,6 +77,7 @@ export const api = {
   getKnowledge:    (page = 1) => get(`/knowledge?page=${page}&per_page=20`),
   deleteKnowledge: (id)       => post(`/knowledge/${id}/delete`),
   uploadKnowledge: (formData) => postFormRaw('/knowledge/upload', formData),
+  replaceKnowledge: (id, formData) => postFormRaw(`/knowledge/${id}/replace`, formData),
 
   // Answer library
   getAnswerLibrary: (q = '', category = '') =>

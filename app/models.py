@@ -102,6 +102,7 @@ class Document(Base):
     content_hash = Column(String(64), nullable=True, unique=True, index=True)
     is_starter = Column(Boolean, default=False, nullable=False, server_default="false")
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    content_updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=True)
 
     org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
 

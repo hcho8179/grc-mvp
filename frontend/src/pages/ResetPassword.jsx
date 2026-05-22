@@ -83,7 +83,7 @@ export default function ResetPassword() {
           </div>
           <div>
             <p className="font-bold text-base leading-none" style={{ color: t.text }}>Greenlight</p>
-            <p className="text-xs mt-0.5" style={{ color: t.text3 }}>GRC Automation</p>
+            <p className="text-xs mt-0.5" style={{ color: t.text3 }}>Close deals faster</p>
           </div>
         </div>
 

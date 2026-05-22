@@ -175,7 +175,11 @@ Owners 可通过 email 邀请 team members。
 - Password requirements：8+ characters、至少一个 uppercase、一个 number、一个 symbol
 - Passwords 使用 Argon2id hashing（OWASP 推荐的 industry standard）
 - Login sessions 使用 secure httponly cookies（JavaScript 无法访问 token，可防止 XSS）
-- Login 与 registration 均有限流（每 IP 每分钟最多 5 次），用于阻止 brute-force attacks
+- Login 设有三道独立防线，覆盖所有已知的自动化攻击模式：
+  - **按 IP 请求限速** — 每个 IP 每分钟最多 10 次，拦截基础暴力破解
+  - **按邮箱速度锁定** — 同一邮箱 15 分钟内失败 10 次即封锁，无论攻击者换了多少个 IP，专门拦截撞库攻击（rotating IPs，打同一账号）
+  - **按 IP 全局喷洒封锁** — 同一 IP 在 15 分钟内对任意邮箱累计失败 20 次即封锁该 IP，专门拦截密码喷洒攻击（同一 IP，轮换攻击不同邮箱）
+  - 每次触发封锁都会写入审计日志，记录攻击来源 IP 与触发原因
 - Signup 必须 email verification
 - Password reset 通过 time-limited email token
 
@@ -184,6 +188,7 @@ Owners 可通过 email 邀请 team members。
 - 上传文件（Excel questionnaires、policy documents）储存在 S3-compatible object storage，而不是数据库
 - 所有数据都按 organisation 隔离，一个客户永远看不到另一个客户数据
 - Soft delete only —— 数据不会被永久删除，除非 explicit action
+- **政策文件原地替换与新鲜度追踪** — 当公司政策发生变更时，管理员可直接替换知识库中的文件，无需先删除再重新上传。系统会立即删除旧文件的所有内容碎片，对新文件重新解析和生成向量，并保留原文件 ID，确保审计记录完整。三道机制确保过时内容绝不会悄无声息地残留：（1）知识库列表对 90 天以上未更新的文档显示琥珀色警告徽章，超过 180 天变为红色；（2）管理员上传与现有文档同名的文件时，系统自动识别为可能的更新版本，弹出"替换现有版本？"提示，而不是创建重复副本；（3）每次替换后 `content_updated_at` 时间戳立即重置，徽章状态始终反映实际内容的真实时效。
 
 ### AI 答案安全
 
@@ -239,5 +244,6 @@ Owners 可通过 email 邀请 team members。
 - Web portal integrations（OneTrust、Vanta、Whistic）
 - Common framework templates（CAIQ、SIG Lite、VSA）
 - 澳洲数据主权支持 — 所有客户数据（上传文档、问卷资产、AI 生成内容）将全部存储于 AWS 悉尼区域（ap-southeast-2），开箱即符合澳洲隐私法规与数据本地化要求
+- 云端文档同步 — 连接 Google Drive、SharePoint 或 Confluence，当来源政策文件被修改时，Greenlight 自动检测并提示团队重新嵌入，从根本上消除知识库内容过期导致答案失实的风险
 
 ---

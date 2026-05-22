@@ -356,6 +356,21 @@ async def api_knowledge_upload(
     ).first()
     if existing:
         return JSONResponse({"error": f"Already uploaded as '{existing.filename}'."}, status_code=409)
+
+    # Filename collision: same name, different content — likely an updated version
+    same_name = db.query(Document).filter(
+        Document.filename == filename,
+        Document.org_id == current_user.org_id,
+        Document.deleted_at == None,
+        Document.is_starter == False,
+    ).first()
+    if same_name:
+        return JSONResponse({
+            "error": f"A document named '{filename}' already exists in your knowledge base.",
+            "suggest_replace": True,
+            "existing_id": same_name.id,
+            "existing_filename": same_name.filename,
+        }, status_code=409)
     try:
         text_content = parse_file(filename, file_bytes)
     except ValueError as exc:
@@ -408,6 +423,109 @@ async def api_knowledge_upload(
 
     log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
               action="document.uploaded", resource_type="document", resource_id=doc.id,
+              detail={"filename": filename, "chunk_count": leaf_count})
+    db.commit()
+    return {"id": doc.id, "filename": doc.filename, "file_type": doc.file_type.value, "chunk_count": doc.chunk_count}
+
+
+@router.post("/knowledge/{doc_id}/replace")
+async def api_knowledge_replace(
+    doc_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Replace an existing document's content in-place.
+
+    Drops all old chunks (and their feedback signals via CASCADE), re-parses
+    and re-embeds the new file, and updates content_updated_at so the
+    staleness indicator resets immediately.
+    """
+    from datetime import datetime, timezone
+    _require_role(current_user, "owner", "admin")
+
+    doc = db.query(Document).filter(
+        Document.id == doc_id,
+        Document.org_id == current_user.org_id,
+        Document.deleted_at == None,
+    ).first()
+    if not doc:
+        return JSONResponse({"error": "Document not found."}, status_code=404)
+
+    file_bytes = await file.read()
+    filename   = file.filename or doc.filename
+    ext        = Path(filename).suffix.lower().lstrip(".")
+
+    if not file_bytes:
+        return JSONResponse({"error": "Uploaded file is empty."}, status_code=400)
+    if len(file_bytes) > 20 * 1024 * 1024:
+        return JSONResponse({"error": "File too large — maximum size is 20 MB."}, status_code=400)
+    if ext not in {"pdf", "docx"}:
+        return JSONResponse({"error": "Only PDF or DOCX files can be replaced."}, status_code=400)
+
+    content_hash = hashlib.sha256(file_bytes).hexdigest()
+    duplicate = db.query(Document).filter(
+        Document.content_hash == content_hash,
+        Document.id != doc_id,
+        Document.org_id == current_user.org_id,
+        Document.deleted_at == None,
+    ).first()
+    if duplicate:
+        return JSONResponse({"error": f"This file is identical to '{duplicate.filename}'."}, status_code=409)
+
+    try:
+        text_content = parse_file(filename, file_bytes)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    if not text_content.strip():
+        return JSONResponse({"error": "No text could be extracted. File may be scanned or encrypted."}, status_code=400)
+
+    text_content = sanitize_text(text_content, source_label=filename)
+    h_chunks = hierarchical_chunks(text_content)
+    if not h_chunks:
+        return JSONResponse({"error": "File contains no meaningful text."}, status_code=400)
+
+    # Drop old chunks (CASCADE removes ChunkFeedback automatically)
+    db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).delete(synchronize_session=False)
+
+    leaf_count             = sum(1 for hc in h_chunks if hc.is_leaf)
+    doc.filename           = filename
+    doc.file_type          = FileType(ext)
+    doc.chunk_count        = leaf_count
+    doc.content_hash       = content_hash
+    doc.content_updated_at = datetime.now(timezone.utc)
+    db.flush()
+
+    idx_to_obj: dict[int, KnowledgeChunk] = {}
+    for idx, hc in enumerate(h_chunks):
+        parent_db_id = (
+            idx_to_obj[hc.parent_index].id
+            if hc.parent_index is not None and hc.parent_index in idx_to_obj
+            else None
+        )
+        chunk_obj = KnowledgeChunk(
+            document_id=doc.id,
+            source_document=filename,
+            source_type=SourceType.policy,
+            text=hc.text,
+            is_leaf=hc.is_leaf,
+            parent_chunk_id=parent_db_id,
+        )
+        db.add(chunk_obj)
+        db.flush()
+        idx_to_obj[idx] = chunk_obj
+
+    context_prefix = f"Document: {filename}\n"
+    leaves = [(idx, hc) for idx, hc in enumerate(h_chunks) if hc.is_leaf]
+    if leaves:
+        prefixed   = [context_prefix + hc.text for _, hc in leaves]
+        provider   = get_embedding_provider()
+        embeddings = await provider.embed(prefixed)
+        for (idx, _), embedding in zip(leaves, embeddings):
+            idx_to_obj[idx].embedding = embedding
+
+    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+              action="document.replaced", resource_type="document", resource_id=doc_id,
               detail={"filename": filename, "chunk_count": leaf_count})
     db.commit()
     return {"id": doc.id, "filename": doc.filename, "file_type": doc.file_type.value, "chunk_count": doc.chunk_count}
@@ -1110,6 +1228,7 @@ def api_list_knowledge(
             "file_type": d.file_type.value,
             "chunk_count": d.chunk_count,
             "created_at": d.created_at.isoformat(),
+            "content_updated_at": d.content_updated_at.isoformat() if d.content_updated_at else d.created_at.isoformat(),
             "is_starter": d.is_starter,
         }
         for d in docs

@@ -150,7 +150,11 @@ Since this is a security product, I want to be transparent about how the tool it
 - Passwords require: 8+ characters, at least one uppercase letter, one number, and one symbol
 - Passwords are stored using Argon2id hashing — the current industry standard recommended by OWASP
 - Login sessions use secure, httponly cookies (tokens are not accessible to JavaScript, protecting against XSS attacks)
-- Login and registration are rate-limited (5 attempts per minute per IP) to block brute-force attacks
+- Login is protected by three independent rate-limiting layers that together cover every known automated attack pattern:
+  - **Per-IP request limit** — 10 attempts per minute per IP, blocking basic brute-force
+  - **Per-email velocity lock** — 10 failures against the same email within 15 minutes triggers a lockout regardless of source IP, blocking credential stuffing (rotating IPs, same target account)
+  - **Per-IP global spray block** — 20 total failures from the same IP across any accounts within 15 minutes triggers an IP block, stopping password spraying (same IP, rotating through many email addresses)
+  - Every lockout event is written to the audit log with the attacking IP and the reason triggered
 - Email verification required on signup
 - Password reset via time-limited email token
 
@@ -159,6 +163,7 @@ Since this is a security product, I want to be transparent about how the tool it
 - All data is scoped to the organisation at the database query level — every query is filtered by `org_id`, making cross-tenant data access structurally impossible without a deliberate application bypass
 - For consulting firms managing multiple clients: each client is a fully isolated workspace with its own `org_id`. No query, search, or suggestion can ever surface data from one client workspace in another. The answer library, knowledge base, and all AI drafting are strictly per-org.
 - Soft deletes only — data is never permanently destroyed without explicit action
+- **Live document replacement with staleness tracking** — when a policy changes, admins can replace the file in-place rather than deleting and re-uploading. The system drops all old chunks, re-parses and re-embeds the new content immediately, and preserves the document's ID so the audit trail remains intact. Three mechanisms ensure stale content never quietly persists: (1) documents not updated in 90+ days show an amber warning badge on the knowledge base list, turning red at 180+ days; (2) if an admin uploads a file with the same name as an existing document, the system detects it as a likely update and prompts "replace the existing version?" instead of creating a silent duplicate; (3) a `content_updated_at` timestamp resets on every replace so the staleness indicators always reflect the true age of the embedded content.
 
 **AI answer safety**
 - **Negation / trap-question detection** — security questionnaires sometimes use reverse-phrasing to catch dishonest vendors (e.g. "Are there any employees exempt from background checks?"). The AI is explicitly instructed to detect this pattern and verify that its Yes/No answer reflects the company's secure, compliant posture — not accidentally admit a gap through a keyword match. Each flagged answer includes a one-line polarity note so the human reviewer knows why the answer was chosen that way.
@@ -204,6 +209,7 @@ The engine that finds the right policy content for each question uses a multi-la
 - Web portal integrations — OneTrust, Vanta, Whistic (for customers who share a portal link instead of a file)
 - Common framework templates — pre-built questionnaire templates for CAIQ, SIG Lite, VSA so teams can start without waiting for a customer to send one
 - Australian data sovereignty — all customer data (uploaded documents, questionnaires, AI-generated content) stored exclusively on AWS Sydney region (ap-southeast-2), meeting Australian privacy and data residency requirements out of the box
+- Cloud document sync — connect Google Drive, SharePoint, or Confluence so Greenlight automatically detects when a source policy file is updated and prompts the team to re-embed it, eliminating the risk of answering questionnaires from stale knowledge base content
 
 ---
 

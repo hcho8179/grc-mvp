@@ -255,6 +255,120 @@ async def finalize_xlsx(
 
 
 # ---------------------------------------------------------------------------
+# Replace — re-parse and re-embed an existing document without changing its ID
+# ---------------------------------------------------------------------------
+
+@router.post("/{document_id}/replace")
+async def replace_document(
+    document_id: int,
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Upload a new version of an existing document.
+
+    Drops all existing chunks (including their feedback signals), then runs
+    the full parse → sanitize → hierarchical_chunk → embed pipeline on the
+    new file.  The Document row keeps its original id so downstream references
+    (audit log, etc.) remain valid.  XLSX column-picker documents are not
+    replaceable via this endpoint — delete and re-upload instead.
+    """
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.deleted_at == None,
+    ).first()
+    if not doc:
+        return RedirectResponse(url="/knowledge", status_code=303)
+
+    def _error(msg: str):
+        return templates.TemplateResponse(
+            request,
+            "knowledge/upload.html",
+            {"error": msg},
+            status_code=400,
+        )
+
+    file_bytes = await file.read()
+    filename   = file.filename or doc.filename
+    ext        = Path(filename).suffix.lower().lstrip(".")
+
+    if not file_bytes:
+        return _error("Uploaded file is empty.")
+    if len(file_bytes) > 20 * 1024 * 1024:
+        return _error("File too large — maximum size is 20 MB.")
+    if ext not in {"pdf", "docx"}:
+        return _error("Only PDF or DOCX files can be replaced here. For XLSX, delete and re-upload.")
+
+    content_hash = hashlib.sha256(file_bytes).hexdigest()
+
+    # Reject if this exact content already lives on a *different* document
+    duplicate = db.query(Document).filter(
+        Document.content_hash == content_hash,
+        Document.id != document_id,
+        Document.deleted_at == None,
+    ).first()
+    if duplicate:
+        return _error(f"This file is identical to '{duplicate.filename}' already in the knowledge base.")
+
+    try:
+        text = parse_file(filename, file_bytes)
+    except ValueError as exc:
+        return _error(str(exc))
+
+    if not text.strip():
+        return _error("No text could be extracted. The file may be scanned, image-only, or encrypted.")
+
+    text     = sanitize_text(text, source_label=filename)
+    h_chunks = hierarchical_chunks(text)
+    if not h_chunks:
+        return _error("File appears to contain no meaningful text after parsing.")
+
+    # Drop all old chunks — CASCADE removes ChunkFeedback rows automatically
+    db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == document_id).delete(synchronize_session=False)
+
+    # Update the document record in place
+    leaf_count        = sum(1 for hc in h_chunks if hc.is_leaf)
+    doc.filename      = filename
+    doc.file_type     = FileType(ext)
+    doc.chunk_count   = leaf_count
+    doc.content_hash  = content_hash
+    db.flush()
+
+    # First pass: store all chunks, wire parent links
+    idx_to_obj: dict[int, KnowledgeChunk] = {}
+    for idx, hc in enumerate(h_chunks):
+        parent_db_id = (
+            idx_to_obj[hc.parent_index].id
+            if hc.parent_index is not None and hc.parent_index in idx_to_obj
+            else None
+        )
+        chunk_obj = KnowledgeChunk(
+            document_id=doc.id,
+            source_document=filename,
+            source_type=SourceType.policy,
+            text=hc.text,
+            is_leaf=hc.is_leaf,
+            parent_chunk_id=parent_db_id,
+        )
+        db.add(chunk_obj)
+        db.flush()
+        idx_to_obj[idx] = chunk_obj
+
+    # Second pass: embed leaf chunks with contextual prefix
+    context_prefix = f"Document: {filename}\n"
+    leaves = [(idx, hc) for idx, hc in enumerate(h_chunks) if hc.is_leaf]
+    if leaves:
+        prefixed  = [context_prefix + hc.text for _, hc in leaves]
+        provider  = get_embedding_provider()
+        embeddings = await provider.embed(prefixed)
+        for (idx, _), emb in zip(leaves, embeddings):
+            idx_to_obj[idx].embedding = emb
+
+    db.commit()
+    return RedirectResponse(url="/knowledge", status_code=303)
+
+
+# ---------------------------------------------------------------------------
 # Delete
 # ---------------------------------------------------------------------------
 
