@@ -1,4 +1,4 @@
-# GRC MVP — AI Security Questionnaire Automation
+# GRC MVP
 
 Automates security questionnaire responses using your existing policies and past answers.
 
