@@ -99,6 +99,16 @@ The exported file is named with the questionnaire name and today's date, ready t
 
 ---
 
+### What happens if the AI is wrong?
+
+Nothing leaves without a human approving it. Every answer is explicitly marked as a draft until a reviewer reads it and signs off. The system is designed as a co-pilot, not an autopilot — the AI does the research and writing, the human makes every final decision.
+
+The audit log records exactly who approved which answer, when, and from which source documents. If a customer ever questions an answer, you have a full traceable record. If an answer is later found to be wrong, you reject it and re-draft — it takes seconds, and the system learns from the correction.
+
+The confidence scoring is there precisely for this reason: Low-confidence answers are flagged so reviewers know where to spend their attention. You are never flying blind.
+
+---
+
 ### What makes Greenlight different — the compounding answer library
 
 Every answer your team approves is automatically saved to a searchable library. When a similar question appears in a future questionnaire, the system surfaces the previously approved answer as a suggestion — already written, already reviewed, already trusted.
