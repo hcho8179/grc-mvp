@@ -15,13 +15,7 @@ Hi! I'm building a B2B SaaS tool to help security teams respond to customer secu
 
 ## The Problem I'm Solving
 
-When a vendor wants to sell to a large company, the company often sends a security questionnaire — sometimes 50, sometimes 300+ questions like:
-
-- "Do you encrypt data at rest?"
-- "Do you have a SOC 2 report?"
-- "What is your password policy?"
-- "Describe your incident response process."
-
+When a vendor wants to sell to a large company, the company often sends a security questionnaire — sometimes 50, sometimes 300+ questions
 Answering these is repetitive, slow, and usually falls on one person. The answers are almost always the same across questionnaires, just phrased differently each time.
 
 ---
@@ -187,31 +181,6 @@ Since this is a security product, I want to be transparent about how the tool it
 - Word and PDF questionnaire upload — not just Excel files
 - Web portal integrations — OneTrust, Vanta, Whistic (for customers who share a portal link instead of a file)
 - Common framework templates — pre-built questionnaire templates for CAIQ, SIG Lite, VSA so teams can start without waiting for a customer to send one
-
----
-
-## What I'd Love Your Feedback On
-
-### 1. Workflow — does this match reality?
-In your experience, how does the questionnaire response process actually work? Is it one person doing everything, or is it spread across a team? Does my approve/reject/assign flow make sense for how teams actually operate?
-
-### 2. The knowledge base idea
-The system drafts answers by reading uploaded policy documents. In practice, are company policies usually in a state where this would work? Or are they often outdated, scattered, or inconsistent? How big a problem is "the policy says X but we actually do Y"?
-
-### 3. Confidence and flagging
-When the system isn't sure about an answer (low confidence), it flags it for manual review. Is that the right signal to surface? What other signals would be useful — e.g. "this question references a regulation I don't recognise", or "this answer contradicts something in another questionnaire"?
-
-### 4. Questionnaire formats
-Are most questionnaires Excel files? Do you see Word documents, PDFs, or web-based portals (like OneTrust, Vanta, Whistic) often? Should I be prioritising any of those formats?
-
-### 5. Who is the buyer?
-In your experience, who owns the questionnaire response process — the CISO, a GRC analyst, a sales engineer? Who would buy a tool like this and who would use it day-to-day? Are those the same person?
-
-### 6. What's missing?
-Is there anything obviously missing that would make this not worth using? Any part of the workflow that feels wrong or unrealistic?
-
-### 7. Pricing gut-check
-I'm thinking of charging per questionnaire or per seat per month. Which model makes more sense for how security teams actually budget for tools like this?
 
 ---
 

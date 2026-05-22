@@ -15,13 +15,7 @@ Sentinel GRC 是一个 organizational security memory 与 questionnaire workflow
 
 ## 我正在解决的问题
 
-当一家 vendor 想把产品卖给大型公司时，对方通常会发送 security questionnaire —— 有时 50 个问题，有时 300+ 个问题，例如：
-
-- “Do you encrypt data at rest?”
-- “Do you have a SOC 2 report?”
-- “What is your password policy?”
-- “Describe your incident response process.”
-
+当一家 vendor 想把产品卖给大型公司时，对方通常会发送 security questionnaire —— 有时 50 个问题，有时 300+ 个问题
 回答这些问题通常重复、缓慢，而且往往落在一个人身上处理。实际上，不同 questionnaires 的答案大部分都差不多，只是换了不同说法。
 
 ---
@@ -223,69 +217,5 @@ Owners 可通过 email 邀请 team members。
 - Word 与 PDF questionnaire upload
 - Web portal integrations（OneTrust、Vanta、Whistic）
 - Common framework templates（CAIQ、SIG Lite、VSA）
-
----
-
-## 我最希望获得的反馈
-
-### 1. Workflow 是否符合现实？
-
-在你的经验里，questionnaire response process 实际上是如何运作的？
-是一个人处理全部，还是团队协作？
-我的 approve/reject/assign flow 是否符合真实企业 workflow？
-
-### 2. Knowledge base 的想法
-
-系统通过 uploaded policy documents draft answers。
-
-现实中，公司 policies 是否通常已经 structured 到足够支持这种 workflow？
-还是经常 outdated、scattered、inconsistent？
-
-“policy 写的是 X，但现实做的是 Y” 这种情况有多常见？
-
-### 3. Confidence 与 flagging
-
-当系统对答案不确定时（low confidence），它会 flag 进行 manual review。
-
-这是正确的 signal 吗？
-
-还有什么 signal 更有价值？
-例如：
-- “这个问题引用了我不认识的 regulation”
-- “这个 answer 与另一份 questionnaire 冲突”
-
-### 4. Questionnaire formats
-
-大部分 questionnaires 是 Excel 吗？
-现实中是否常见：
-- Word
-- PDF
-- web portals（例如 OneTrust、Vanta、Whistic）
-
-我是否应该优先支持某些格式？
-
-### 5. 谁是真正的 buyer？
-
-现实中，谁负责 questionnaire response process？
-- CISO
-- GRC analyst
-- sales engineer
-
-谁会真正购买这种工具？
-谁会日常使用？
-两者是否是同一个人？
-
-### 6. 缺了什么？
-
-有没有明显缺失的部分，会导致这个产品“不值得使用”？
-有没有 workflow 哪部分明显不现实？
-
-### 7. Pricing gut-check
-
-我目前在考虑：
-- per questionnaire
-- per seat per month
-
-哪种 pricing model 更符合 security teams 的真实预算方式？
 
 ---
