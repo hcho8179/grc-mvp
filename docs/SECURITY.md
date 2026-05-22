@@ -1,4 +1,4 @@
-# Sentinel GRC — Security Implementation Status
+# Greenlight — Security Implementation Status
 
 Last updated: 2026-05-21
 

@@ -1,22 +1,12 @@
-# Additional Strategic Positioning
+# Greenlight — Brief
 
-Sentinel GRC is a security memory and questionnaire workflow platform for growing B2B SaaS companies.
-
-The platform is not intended to be just another autofill tool. The longer-term goal is to help organizations accumulate reusable institutional security knowledge over time through approved answers, review history, evidence linkage, stale-answer detection, and operational trust workflows.
-
-The core problem is not only answering questionnaires faster, but reducing duplicated work, inconsistent responses, scattered knowledge, and operational bottlenecks during enterprise security reviews.
-
-
-# Sentinel GRC — Brief
-
-Hi! I'm building a B2B SaaS tool to help security teams respond to customer security questionnaires faster. I'd love your honest feedback as someone who does this work day-to-day.
+A typical 200-question security questionnaire takes 3 days to answer manually. Greenlight does it in under an hour — and every questionnaire you complete makes the next one faster.
 
 ---
 
-## The Problem I'm Solving
+## The Problem
 
-When a vendor wants to sell to a large company, the company often sends a security questionnaire — sometimes 50, sometimes 300+ questions
-Answering these is repetitive, slow, and usually falls on one person. The answers are almost always the same across questionnaires, just phrased differently each time.
+When a vendor wants to sell to a large company, the company sends a security questionnaire — sometimes 50 questions, sometimes 300+. Answering them is repetitive, slow, and usually falls on one person. The answers are almost always the same across questionnaires, just phrased differently each time. Every hour spent on this is an hour not spent closing the deal.
 
 ---
 
@@ -25,10 +15,10 @@ Answering these is repetitive, slow, and usually falls on one person. The answer
 There are two types of customers, both with the same problem approached differently.
 
 **Type 1 — Companies with an internal security team**
-Series B/C SaaS companies with a dedicated GRC analyst or security engineer in-house. They receive security questionnaires regularly — sometimes 5–10 per month — and the analyst is the bottleneck. They buy Sentinel directly and use it themselves. The CISO or GRC analyst is both the buyer and the day-to-day user.
+Series B/C SaaS companies with a dedicated GRC analyst or security engineer in-house. They receive security questionnaires regularly — sometimes 5–10 per month — and the analyst is the bottleneck. They buy Greenlight directly and use it themselves. The CISO or GRC analyst is both the buyer and the day-to-day user.
 
 **Type 2 — Companies with no internal security team**
-Smaller companies (10–100 employees) with no dedicated security person. When a questionnaire arrives from a big prospect, they hire a GRC consulting firm to handle it on their behalf. The consulting firm uses Sentinel across all their clients — one tool, many client workspaces, each fully isolated. The consulting firm is the buyer; their clients are the beneficiaries.
+Smaller companies (10–100 employees) with no dedicated security person. When a questionnaire arrives from a big prospect, they hire a GRC consulting firm to handle it on their behalf. The consulting firm uses Greenlight across all their clients — one tool, many client workspaces, each fully isolated. The consulting firm is the buyer; their clients are the beneficiaries.
 
 Both types feel the same pain. The difference is who in the chain feels it most directly and who makes the buying decision.
 
@@ -95,8 +85,6 @@ For each question the reviewer can:
 - **Assign** — send the question to a specific team member (e.g. a network question goes to the infra engineer)
 - **Comment** — leave a note for teammates on a specific question
 
-The reviewer can also **bulk approve** all high-confidence answers at once to speed up the process.
-
 A progress counter at the top shows how many questions are approved out of the total.
 
 ---
@@ -105,7 +93,17 @@ A progress counter at the top shows how many questions are approved out of the t
 
 When the reviewer is ready, they click Export. The tool writes the approved answers back into the original Excel file layout — the customer's column structure is preserved. Unapproved, flagged, or edited-but-not-approved answers are never included.
 
+If the customer's questionnaire file contains Excel macros or VBA scripts (common with large financial institutions that lock cells programmatically), the tool detects this automatically and preserves the macro project in the exported file. Answers are also matched to any dropdown lists defined in the file so the output passes Excel's own data validation without manual correction.
+
 The exported file is named with the questionnaire name and today's date, ready to send.
+
+---
+
+### What makes Greenlight different — the compounding answer library
+
+Every answer your team approves is automatically saved to a searchable library. When a similar question appears in a future questionnaire, the system surfaces the previously approved answer as a suggestion — already written, already reviewed, already trusted.
+
+Unlike competitors that treat every questionnaire as a blank slate, Greenlight gets smarter with every one you complete. Your 10th questionnaire takes a fraction of the time your first did. Your institutional security knowledge stops living in someone's inbox and starts compounding into a permanent asset.
 
 ---
 
@@ -132,9 +130,6 @@ Owners can invite team members by email. Three roles:
 - **Admin** — can manage questionnaires, knowledge base, and team members
 - **User** — can review and approve answers on questionnaires assigned to them
 
-**Answer library**
-Every answer that gets approved is automatically saved to a searchable library. When a similar question appears in a future questionnaire, the system surfaces the previously approved answer as a suggestion — with a match score showing how closely it fits. Each entry tracks how many times it has been reused. Answers are grouped by category (access control, encryption, incident response, etc.) and are searchable by keyword. The library compounds over time: the more questionnaires the team completes, the faster future ones go.
-
 ---
 
 ## Security Features Built Into the Tool Itself
@@ -155,12 +150,29 @@ Since this is a security product, I want to be transparent about how the tool it
 - For consulting firms managing multiple clients: each client is a fully isolated workspace with its own `org_id`. No query, search, or suggestion can ever surface data from one client workspace in another. The answer library, knowledge base, and all AI drafting are strictly per-org.
 - Soft deletes only — data is never permanently destroyed without explicit action
 
+**AI answer safety**
+- **Negation / trap-question detection** — security questionnaires sometimes use reverse-phrasing to catch dishonest vendors (e.g. "Are there any employees exempt from background checks?"). The AI is explicitly instructed to detect this pattern and verify that its Yes/No answer reflects the company's secure, compliant posture — not accidentally admit a gap through a keyword match. Each flagged answer includes a one-line polarity note so the human reviewer knows why the answer was chosen that way.
+- **Prompt injection defence** — every document uploaded to the knowledge base is sanitized before it is chunked and stored. Lines matching known injection patterns (system instruction overrides, "ignore previous instructions", model-specific tokens, Chinese-language equivalents) are stripped and logged. At generation time, retrieved document chunks are wrapped in explicit data-only boundaries so the AI is structurally prevented from treating document content as commands — even if a crafted phrase were to slip through the ingest filter.
+
 **Application security**
 - Security headers on every response: Content Security Policy, X-Frame-Options, Referrer-Policy, Permissions-Policy
 - HTTPS-only mode with HSTS when deployed to production
 - CORS restricted to the configured frontend domain only
 - File uploads: Excel files only, 20MB maximum size limit
 - All actions written to an immutable audit log
+
+**AI retrieval quality (RAG)**
+
+The engine that finds the right policy content for each question uses a multi-layer pipeline that goes significantly beyond what competitors ship:
+
+- **Hybrid search** — every question is searched two ways simultaneously: semantic vector search (understands meaning) and full-text keyword search (catches exact compliance terms like "SOC 2 Type II" or "AES-256" that embedding search can miss). Results are merged using Reciprocal Rank Fusion.
+- **HyDE + query expansion** — before searching, the system generates a hypothetical answer and three rephrasings of the question, then searches across all five variants. This dramatically improves recall for verbosely-worded enterprise questionnaire questions.
+- **Source-aware ranking** — previously approved human-reviewed answers are ranked 35% higher than generic policy documents. Starter templates are ranked 25% lower. The more questionnaires a team completes, the more the retrieval is weighted toward their own trusted answers.
+- **Feedback learning** — every time a reviewer approves an answer, the source chunks that contributed receive a positive signal. Every rejection or re-draft triggers a negative signal. Over time, chunks that consistently produce bad answers are automatically down-ranked for that organisation — the system gets smarter with every review decision, without any manual curation.
+- **Parent-child retrieval** — documents are stored at two levels: small child chunks (~150 tokens) for precise retrieval, and large parent chunks (~800 tokens) for rich LLM context. The system finds answers with the precision of a small chunk but sends the full surrounding section to the AI — 5× more context per result.
+- **Semantic chunking** — documents are split at structural boundaries (headers, numbered sections, paragraph breaks) rather than arbitrary token counts, so a policy clause about encryption is never split mid-sentence across two chunks.
+- **Voyage reranking** — after retrieval, a dedicated reranking model re-scores the top 20 candidates for true relevance before the final selection is sent to the LLM.
+- **Retrieval evaluation** — an internal dashboard (`/admin/rag-eval`) continuously measures retrieval quality against the organisation's own approved answer history. Metrics include hit rate, precision@1, and Mean Reciprocal Rank — so degradation is caught before it affects answer quality.
 
 **Monitoring**
 - Error tracking via Sentry (crash reports, never user data)
@@ -181,6 +193,7 @@ Since this is a security product, I want to be transparent about how the tool it
 - Word and PDF questionnaire upload — not just Excel files
 - Web portal integrations — OneTrust, Vanta, Whistic (for customers who share a portal link instead of a file)
 - Common framework templates — pre-built questionnaire templates for CAIQ, SIG Lite, VSA so teams can start without waiting for a customer to send one
+- Australian data sovereignty — all customer data (uploaded documents, questionnaires, AI-generated content) stored exclusively on AWS Sydney region (ap-southeast-2), meeting Australian privacy and data residency requirements out of the box
 
 ---
 

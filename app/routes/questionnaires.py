@@ -557,17 +557,22 @@ async def export_questionnaire(questionnaire_id: int, db: Session = Depends(get_
         return RedirectResponse(url="/questionnaires", status_code=303)
 
     try:
-        xlsx_bytes = export_questionnaire_to_xlsx(questionnaire_id, db)
+        file_bytes, file_ext = export_questionnaire_to_xlsx(questionnaire_id, db)
     except ValueError as exc:
         return HTMLResponse(f"<p>Export failed: {exc}</p>", status_code=400)
 
     from datetime import date
     safe_name = q.name.replace(" ", "_").replace("/", "-")
     today = date.today().strftime("%Y-%m-%d")
+    media_type = (
+        "application/vnd.ms-excel.sheet.macroEnabled.12"
+        if file_ext == "xlsm"
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     return Response(
-        content=xlsx_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}_filled_{today}.xlsx"'},
+        content=file_bytes,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}_filled_{today}.{file_ext}"'},
     )
 
 

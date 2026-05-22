@@ -35,7 +35,7 @@ export default function InvitePage() {
             <Icon name="shield" size={17} color="white" />
           </div>
           <div>
-            <p className="font-bold text-base leading-none" style={{ color: t.text }}>Sentinel</p>
+            <p className="font-bold text-base leading-none" style={{ color: t.text }}>Greenlight</p>
             <p className="text-xs mt-0.5" style={{ color: t.text3 }}>GRC Automation</p>
           </div>
         </div>
@@ -49,7 +49,7 @@ export default function InvitePage() {
               </div>
               <h1 className="text-xl font-bold mb-1" style={{ color: t.text }}>You're invited</h1>
               <p className="text-sm mb-6" style={{ color: t.text2 }}>
-                Join <strong>{orgName}</strong> on Sentinel GRC
+                Join <strong>{orgName}</strong> on Greenlight
               </p>
               <button
                 onClick={() => nav(`/register?token=${token}`)}

@@ -857,16 +857,6 @@ export default function QuestionnaireDetail() {
         {/* Actions */}
         <div className="px-3 py-3 space-y-2 flex-shrink-0"
              style={{ borderTop: `1px solid ${t.borderColor}` }}>
-          {highConf.length > 0 && (
-            <button onClick={handleBulkApprove}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
-                    style={{ background: t.dark ? 'rgba(34,197,94,0.1)' : '#f0fdf4',
-                             color: '#16a34a',
-                             border: '1px solid rgba(34,197,94,0.25)' }}>
-              <Icon name="check" size={12} color="#16a34a" />
-              Approve {highConf.length} high-conf
-            </button>
-          )}
           <button onClick={handleGenerate} disabled={generating}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold
                              text-white hover:opacity-90 disabled:opacity-50 transition-all"

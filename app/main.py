@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
 
 from app.limiter import limiter
 
-app = FastAPI(title="Sentinel GRC", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Greenlight", version="0.1.0", lifespan=lifespan)
 async def _json_rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
         status_code=429,

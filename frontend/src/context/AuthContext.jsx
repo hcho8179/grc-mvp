@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect } from 'react'
 
 const AuthContext = createContext(null)
 
-const USER_KEY = 'sentinel_user'   // only non-sensitive user info, no token
+const USER_KEY = 'greenlight_user'   // only non-sensitive user info, no token
 
 export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(() => {

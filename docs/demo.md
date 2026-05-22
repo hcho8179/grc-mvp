@@ -1,4 +1,4 @@
-# Sentinel Demo Guide
+# Greenlight Demo Guide
 
 5-minute demo script for prospective customers.
 
@@ -19,12 +19,12 @@ Open `http://localhost:8000` — you'll land on the dashboard.
 ## 5-minute demo script
 
 ### 1. Dashboard (30 s)
-*"This is Sentinel — our AI-powered security questionnaire tool. The dashboard shows everything at a glance: how many questionnaires we've handled, how many questions the AI has answered, average confidence, and hours saved. Those hours assume 8 minutes per question answered manually — for a 100-question SIG questionnaire, that's 13+ hours saved."*
+*"This is Greenlight — our AI-powered security questionnaire tool. The dashboard shows everything at a glance: how many questionnaires we've handled, how many questions the AI has answered, average confidence, and hours saved. Those hours assume 8 minutes per question answered manually — for a 100-question SIG questionnaire, that's 13+ hours saved."*
 
 ### 2. Knowledge base (60 s)
 Click **Knowledge Base**.
 
-*"Sentinel learns from your own company documents. We've pre-loaded Acme's information security policy, data protection policy, incident response plan, and 30 past questionnaire answers. When a new question comes in, the AI retrieves the most relevant chunks and generates an answer grounded in your actual policies — it never invents certifications you don't hold."*
+*"Greenlight learns from your own company documents. We've pre-loaded Acme's information security policy, data protection policy, incident response plan, and 30 past questionnaire answers. When a new question comes in, the AI retrieves the most relevant chunks and generates an answer grounded in your actual policies — it never invents certifications you don't hold."*
 
 Click **Upload Document** and drag in a PDF or DOCX if available, or skip.
 
@@ -35,14 +35,14 @@ Click **Questionnaires → Upload Questionnaire**.
 - Customer: `MegaBank Financial Group`
 - Upload `MegaBank_Vendor_Assessment_2026.xlsx` (already in the DB from seed)
 
-*"The customer sent us this 20-question spreadsheet. We upload it, tell Sentinel which column has the questions, and we're done with the manual part."*
+*"The customer sent us this 20-question spreadsheet. We upload it, tell Greenlight which column has the questions, and we're done with the manual part."*
 
 *(If using seeded data, just navigate to the existing MegaBank questionnaire.)*
 
 ### 4. Generate answers (90 s)
 Open the MegaBank questionnaire. Click **✦ Generate Answers**.
 
-*"Sentinel now runs each question through our knowledge base. It does a semantic search — not keyword matching — so 'describe your encryption standards' retrieves the encryption section of our security policy even though those exact words don't appear together."*
+*"Greenlight now runs each question through our knowledge base. It does a semantic search — not keyword matching — so 'describe your encryption standards' retrieves the encryption section of our security policy even though those exact words don't appear together."*
 
 While it runs: *"Each answer gets a confidence score. High means multiple strong sources directly answered it. Medium means some inference was required. Low means it needs human review."*
 
@@ -55,7 +55,7 @@ Show the results table.
 - Edit one answer, click Save, then Approve
 - Show the answer status changing to Approved
 
-*"Approved answers automatically feed back into the knowledge base. The next time a similar question comes in — from a different customer — Sentinel will use this approved answer as a source. It gets smarter over time."*
+*"Approved answers automatically feed back into the knowledge base. The next time a similar question comes in — from a different customer — Greenlight will use this approved answer as a source. It gets smarter over time."*
 
 ### 6. Export (30 s)
 Click **↓ Export XLSX**.
@@ -88,7 +88,7 @@ Today it's a standalone web app. The roadmap includes a Salesforce integration f
 
 ## Talking points
 
-**Time saved:** A typical 100-question SIG Lite questionnaire takes 2-3 days manually. With Sentinel, an hour — including review.
+**Time saved:** A typical 100-question SIG Lite questionnaire takes 2-3 days manually. With Greenlight, an hour — including review.
 
 **Accuracy:** Grounded in your actual policies — no hallucinated certifications. Confidence scores make human review efficient.
 

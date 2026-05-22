@@ -14,7 +14,7 @@ from app.db import get_db
 from app.models import User
 
 ACCESS_TOKEN_EXPIRE_DAYS = 7
-COOKIE_NAME = "sentinel_token"
+COOKIE_NAME = "greenlight_token"
 
 _ph = PasswordHasher()  # Argon2id, OWASP-recommended defaults
 

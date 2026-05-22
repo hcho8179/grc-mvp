@@ -105,8 +105,8 @@ export default function Team() {
       if (res.detail) { setError(res.detail); setConfirm(null); setChanging(null); return }
       // If ownership transferred, update local auth state with new role
       if (res.you) {
-        const stored = JSON.parse(localStorage.getItem('sentinel_user') || '{}')
-        localStorage.setItem('sentinel_user', JSON.stringify({ ...stored, role: res.you.role }))
+        const stored = JSON.parse(localStorage.getItem('greenlight_user') || '{}')
+        localStorage.setItem('greenlight_user', JSON.stringify({ ...stored, role: res.you.role }))
         // Force page reload so auth context picks up the new role
         window.location.reload()
         return
@@ -209,7 +209,7 @@ export default function Team() {
               <div>
                 <p className="text-sm font-semibold" style={{ color: t.text }}>White-label exports</p>
                 <p className="text-xs mt-0.5" style={{ color: t.text3 }}>
-                  Remove the "Generated with Sentinel GRC" footer from exported files.
+                  Remove the "Generated with Greenlight" footer from exported files.
                 </p>
               </div>
               <button

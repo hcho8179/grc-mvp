@@ -12,9 +12,10 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Document, FileType, KnowledgeChunk, SourceType
-from app.services.chunking import chunk_text
+from app.services.chunking import hierarchical_chunks
 from app.services.embeddings import get_embedding_provider
 from app.services.parsing import parse_file, parse_xlsx_preview, parse_xlsx_qa
+from app.services.sanitize import sanitize_text
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -92,7 +93,7 @@ async def upload_document(
         }
         return RedirectResponse(url=f"/knowledge/upload/xlsx/{temp_id}", status_code=303)
 
-    # PDF / DOCX → parse → chunk → embed → persist
+    # PDF / DOCX → parse → sanitize → chunk → embed → persist
     try:
         text = parse_file(filename, file_bytes)
     except ValueError as exc:
@@ -103,30 +104,50 @@ async def upload_document(
             "No text could be extracted. The file may be scanned, image-only, or encrypted."
         )
 
-    chunks = chunk_text(text)
-    if not chunks:
+    text = sanitize_text(text, source_label=filename)
+    h_chunks = hierarchical_chunks(text)
+    if not h_chunks:
         return _error("File appears to contain no meaningful text after parsing.")
 
-    provider = get_embedding_provider()
-    embeddings = await provider.embed(chunks)
-
+    leaf_count = sum(1 for hc in h_chunks if hc.is_leaf)
     doc = Document(
         filename=filename,
         file_type=FileType(ext),
-        chunk_count=len(chunks),
+        chunk_count=leaf_count,
         content_hash=content_hash,
     )
     db.add(doc)
     db.flush()
 
-    for chunk_val, embedding in zip(chunks, embeddings):
-        db.add(KnowledgeChunk(
+    # First pass: store all chunks, track index → db id for parent linking
+    idx_to_obj: dict[int, KnowledgeChunk] = {}
+    for idx, hc in enumerate(h_chunks):
+        parent_db_id = (
+            idx_to_obj[hc.parent_index].id
+            if hc.parent_index is not None and hc.parent_index in idx_to_obj
+            else None
+        )
+        chunk_obj = KnowledgeChunk(
             document_id=doc.id,
             source_document=filename,
             source_type=SourceType.policy,
-            text=chunk_val,
-            embedding=embedding,
-        ))
+            text=hc.text,
+            is_leaf=hc.is_leaf,
+            parent_chunk_id=parent_db_id,
+        )
+        db.add(chunk_obj)
+        db.flush()
+        idx_to_obj[idx] = chunk_obj
+
+    # Second pass: embed leaf chunks only, with contextual prefix
+    context_prefix = f"Document: {filename}\n"
+    leaves = [(idx, hc) for idx, hc in enumerate(h_chunks) if hc.is_leaf]
+    if leaves:
+        prefixed = [context_prefix + hc.text for _, hc in leaves]
+        provider = get_embedding_provider()
+        embeddings = await provider.embed(prefixed)
+        for (idx, _), emb in zip(leaves, embeddings):
+            idx_to_obj[idx].embedding = emb
 
     db.commit()
     return RedirectResponse(url="/knowledge", status_code=303)

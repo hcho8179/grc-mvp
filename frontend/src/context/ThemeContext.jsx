@@ -41,13 +41,13 @@ function buildTokens(dark) {
 
 export function ThemeProvider({ children }) {
   const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem('sentinel_theme')
+    const saved = localStorage.getItem('greenlight_theme')
     return saved ? saved === 'dark' : true
   })
 
   const toggle = () => setDark(d => {
     const next = !d
-    localStorage.setItem('sentinel_theme', next ? 'dark' : 'light')
+    localStorage.setItem('greenlight_theme', next ? 'dark' : 'light')
     return next
   })
 

@@ -15,12 +15,12 @@ def send_restore_notification(owner_email: str, owner_name: str, item_type: str,
     _send({
         "from": settings.resend_from_email,
         "to": [owner_email],
-        "subject": f"[Sentinel] {item_type} restored — {item_name}",
+        "subject": f"[Greenlight] {item_type} restored — {item_name}",
         "html": f"""
         <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111827">
           <div style="margin-bottom:24px">
             <span style="background:#2563eb;color:white;padding:6px 14px;border-radius:8px;font-weight:700;font-size:14px">
-              Sentinel GRC
+              Greenlight
             </span>
           </div>
           <h1 style="font-size:22px;font-weight:700;margin:0 0 8px">Item restored</h1>
@@ -46,12 +46,12 @@ def send_verification_email(to_email: str, verify_url: str, full_name: str) -> N
     _send({
         "from": settings.resend_from_email,
         "to": [to_email],
-        "subject": "Verify your Sentinel email address",
+        "subject": "Verify your Greenlight email address",
         "html": f"""
         <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111827">
           <div style="margin-bottom:24px">
             <span style="background:#2563eb;color:white;padding:6px 14px;border-radius:8px;font-weight:700;font-size:14px">
-              Sentinel GRC
+              Greenlight
             </span>
           </div>
 
@@ -68,7 +68,7 @@ def send_verification_email(to_email: str, verify_url: str, full_name: str) -> N
           </a>
 
           <p style="color:#9ca3af;font-size:12px;margin-top:32px">
-            If you didn't create a Sentinel account, you can ignore this email.
+            If you didn't create a Greenlight account, you can ignore this email.
           </p>
         </div>
         """,
@@ -80,12 +80,12 @@ def send_password_reset(to_email: str, reset_url: str, full_name: str) -> None:
     _send({
         "from": settings.resend_from_email,
         "to": [to_email],
-        "subject": "Reset your Sentinel password",
+        "subject": "Reset your Greenlight password",
         "html": f"""
         <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111827">
           <div style="margin-bottom:24px">
             <span style="background:#2563eb;color:white;padding:6px 14px;border-radius:8px;font-weight:700;font-size:14px">
-              Sentinel GRC
+              Greenlight
             </span>
           </div>
 
@@ -129,12 +129,12 @@ def send_generation_complete(
     _send({
         "from": settings.resend_from_email,
         "to": [to_email],
-        "subject": f"[Sentinel] Drafts ready — {questionnaire_name}",
+        "subject": f"[Greenlight] Drafts ready — {questionnaire_name}",
         "html": f"""
         <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111827">
           <div style="margin-bottom:24px">
             <span style="background:#2563eb;color:white;padding:6px 14px;border-radius:8px;font-weight:700;font-size:14px">
-              Sentinel GRC
+              Greenlight
             </span>
           </div>
           <h1 style="font-size:22px;font-weight:700;margin:0 0 8px">Drafts ready for review</h1>
@@ -174,7 +174,7 @@ def send_question_assigned(
         <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111827">
           <div style="margin-bottom:24px">
             <span style="background:#2563eb;color:white;padding:6px 14px;border-radius:8px;font-weight:700;font-size:14px">
-              Sentinel GRC
+              Greenlight
             </span>
           </div>
 
@@ -195,7 +195,7 @@ def send_question_assigned(
           </a>
 
           <p style="color:#9ca3af;font-size:12px;margin-top:32px">
-            You can find all your assigned questions under <em>My Assignments</em> in Sentinel GRC.
+            You can find all your assigned questions under <em>My Assignments</em> in Greenlight.
           </p>
         </div>
         """,

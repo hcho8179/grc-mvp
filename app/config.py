@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # CORS — comma-separated list of allowed frontend origins
     # Dev default allows Vite dev server. In production set to your real domain.
-    # e.g. ALLOWED_ORIGINS=https://sentinel.yourdomain.com
+    # e.g. ALLOWED_ORIGINS=https://greenlight.yourdomain.com
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # Set to true in production once HTTPS is live — enables HSTS header

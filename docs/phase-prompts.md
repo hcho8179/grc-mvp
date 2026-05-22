@@ -287,7 +287,7 @@ STEP 5c: UI polish pass — go through every page and fix:
 - Empty states: "No questionnaires yet — upload one to get started" 
   with CTA button
 - Error states: friendly error messages on failed parse/embed/generate
-- Navbar in base.html: logo placeholder (just text "Sentinel" or 
+- Navbar in base.html: logo placeholder (just text \"Greenlight\" or 
   whatever — pick something), main sections, current page highlighted
 - Favicon (use an emoji-as-favicon trick: data URL SVG)
 - Decent at 1280×800; mobile responsiveness NOT required

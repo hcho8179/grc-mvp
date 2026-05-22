@@ -96,7 +96,7 @@ export default function AnswerLibrary() {
               {search ? 'Try a different search term.' : 'Approve answers in a questionnaire to build your library.'}
             </p>
           </div>
-        ) : (
+        ) : (<>
           <div className="rounded-xl overflow-hidden" style={t.card}>
             <table className="w-full text-sm">
               <thead>
@@ -195,7 +195,7 @@ export default function AnswerLibrary() {
               </div>
             </div>
           )}
-        )}
+        </>)}
       </div>
     </div>
   )

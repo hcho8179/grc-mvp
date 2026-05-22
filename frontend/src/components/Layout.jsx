@@ -72,7 +72,6 @@ const NAV_SECTIONS = [
     label: 'Analytics',
     adminOnly: true,
     items: [
-      { to: '/admin/usage',             label: 'Usage',          icon: 'bolt',      match: (p) => p === '/admin/usage' },
       { to: '/admin/audit',             label: 'Audit Log',      icon: 'clock',     match: (p) => p === '/admin/audit' },
       { to: '/trash',                   label: 'Trash',          icon: 'doc',       match: (p) => p === '/trash',        adminOnly: true },
       { to: '/admin/team',              label: 'Team',           icon: 'user',      match: (p) => p === '/admin/team'  },
@@ -175,7 +174,7 @@ export default function Layout() {
             <Icon name="shield" size={15} color="white" />
           </div>
           <div>
-            <p className="font-bold text-sm leading-none" style={{ color: t.text }}>Sentinel</p>
+            <p className="font-bold text-sm leading-none" style={{ color: t.text }}>Greenlight</p>
             <p className="text-xs mt-0.5" style={{ color: t.text3 }}>GRC Automation</p>
           </div>
         </div>

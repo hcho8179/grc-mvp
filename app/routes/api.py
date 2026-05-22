@@ -39,7 +39,7 @@ from app.models import (
 from app.services.answer_library import detect_category, classify_category, check_answer_conflict
 from app.services.audit import log_event
 from app.services.email import send_question_assigned
-from app.services.chunking import chunk_text
+from app.services.chunking import hierarchical_chunks
 from app.services.embeddings import get_embedding_provider
 from app.services.export import export_questionnaire_to_xlsx
 from app.services.generation import generate_answer
@@ -48,7 +48,8 @@ from app.services.parsing import (
     parse_xlsx_questionnaire_full,
     parse_xlsx_questionnaire_preview,
 )
-from app.services.retrieval import retrieve_relevant_chunks
+from app.services.retrieval import retrieve_relevant_chunks, record_positive_feedback, record_negative_feedback
+from app.services.sanitize import sanitize_text
 from app.services.templates import find_template_by_customer, list_templates
 from fastapi import HTTPException as _HTTPException
 
@@ -361,33 +362,53 @@ async def api_knowledge_upload(
         return JSONResponse({"error": str(exc)}, status_code=400)
     if not text_content.strip():
         return JSONResponse({"error": "No text could be extracted. File may be scanned or encrypted."}, status_code=400)
-    chunks = chunk_text(text_content)
-    if not chunks:
+    text_content = sanitize_text(text_content, source_label=filename)
+    h_chunks = hierarchical_chunks(text_content)
+    if not h_chunks:
         return JSONResponse({"error": "File contains no meaningful text."}, status_code=400)
 
-    provider = get_embedding_provider()
-    embeddings = await provider.embed(chunks)
-
+    leaf_count = sum(1 for hc in h_chunks if hc.is_leaf)
     doc = Document(
         filename=filename,
         file_type=FileType(ext),
-        chunk_count=len(chunks),
+        chunk_count=leaf_count,
         content_hash=content_hash,
         org_id=current_user.org_id,
     )
     db.add(doc)
     db.flush()
-    for chunk_val, embedding in zip(chunks, embeddings):
-        db.add(KnowledgeChunk(
+
+    idx_to_obj: dict[int, KnowledgeChunk] = {}
+    for idx, hc in enumerate(h_chunks):
+        parent_db_id = (
+            idx_to_obj[hc.parent_index].id
+            if hc.parent_index is not None and hc.parent_index in idx_to_obj
+            else None
+        )
+        chunk_obj = KnowledgeChunk(
             document_id=doc.id,
             source_document=filename,
             source_type=SourceType.policy,
-            text=chunk_val,
-            embedding=embedding,
-        ))
+            text=hc.text,
+            is_leaf=hc.is_leaf,
+            parent_chunk_id=parent_db_id,
+        )
+        db.add(chunk_obj)
+        db.flush()
+        idx_to_obj[idx] = chunk_obj
+
+    context_prefix = f"Document: {filename}\n"
+    leaves = [(idx, hc) for idx, hc in enumerate(h_chunks) if hc.is_leaf]
+    if leaves:
+        prefixed = [context_prefix + hc.text for _, hc in leaves]
+        provider = get_embedding_provider()
+        embeddings = await provider.embed(prefixed)
+        for (idx, _), embedding in zip(leaves, embeddings):
+            idx_to_obj[idx].embedding = embedding
+
     log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
               action="document.uploaded", resource_type="document", resource_id=doc.id,
-              detail={"filename": filename, "chunk_count": len(chunks)})
+              detail={"filename": filename, "chunk_count": leaf_count})
     db.commit()
     return {"id": doc.id, "filename": doc.filename, "file_type": doc.file_type.value, "chunk_count": doc.chunk_count}
 
@@ -596,6 +617,8 @@ async def api_regenerate_question(
         q.category = await classify_category(q.question_text)
 
     score_map = _save_citation_scores(db, q.id, chunks, result.cited_chunk_ids)
+    # Negative feedback: reviewer asked for a regen — previous chunks were insufficient
+    record_negative_feedback(q.cited_chunk_ids or [], current_user.org_id, db)
     log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
               action="answer.generated", resource_type="question", resource_id=q.id,
               detail={"questionnaire_id": questionnaire_id, "confidence": result.confidence, "regen": True})
@@ -631,15 +654,29 @@ async def api_approve_question(
 
     if q.final_answer and q.question_text:
         doc = _get_approved_doc(db, current_user.org_id)
+        chunk_text_val = f"Q: {q.question_text}\nA: {q.final_answer}"
         chunk = KnowledgeChunk(
             document_id=doc.id,
             source_document="Approved Answers",
             source_section=f"Row {q.row_index}",
             source_type=SourceType.approved_answer,
-            text=f"Q: {q.question_text}\nA: {q.final_answer}",
+            text=chunk_text_val,
         )
         db.add(chunk)
+        db.flush()
+        # Embed with context prefix for better retrieval
+        try:
+            from app.services.embeddings import get_embedding_provider as _get_emb
+            _emb_provider = _get_emb()
+            _ctx = f"Document: Approved Answers\n{chunk_text_val}"
+            _embs = await _emb_provider.embed([_ctx])
+            chunk.embedding = _embs[0]
+        except Exception:
+            pass
         doc.chunk_count = (doc.chunk_count or 0) + 1
+
+        # Positive feedback: cited chunks that led to an approved answer were useful
+        record_positive_feedback(q.cited_chunk_ids or [], current_user.org_id, db)
 
         # Save to answer library so future questionnaires can match against it
         try:
@@ -726,6 +763,8 @@ def api_reject_question(
     q.status = QuestionStatus.rejected
     q.final_answer = None
     _record_version(db, q, current_user, "rejected")
+    # Negative feedback: cited chunks that led to a rejected answer were unhelpful
+    record_negative_feedback(q.cited_chunk_ids or [], current_user.org_id, db)
     log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
               action="question.rejected", resource_type="question", resource_id=q.id,
               detail={"questionnaire_id": questionnaire_id})
@@ -825,7 +864,7 @@ def api_export_questionnaire(
         return JSONResponse({"error": "Not found"}, status_code=404)
     org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
     white_label = bool(org and org.white_label_export)
-    xlsx_bytes = export_questionnaire_to_xlsx(questionnaire_id, db, white_label=white_label)
+    file_bytes, file_ext = export_questionnaire_to_xlsx(questionnaire_id, db, white_label=white_label)
     log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
               action="questionnaire.exported", resource_type="questionnaire", resource_id=questionnaire_id,
               detail={"name": qs.name})
@@ -833,10 +872,15 @@ def api_export_questionnaire(
     from datetime import date
     safe_name = qs.name.replace(" ", "_").replace("/", "-")
     today = date.today().strftime("%Y-%m-%d")
-    filename = f"{safe_name}_filled_{today}.xlsx"
+    filename = f"{safe_name}_filled_{today}.{file_ext}"
+    media_type = (
+        "application/vnd.ms-excel.sheet.macroEnabled.12"
+        if file_ext == "xlsm"
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     return StreamingResponse(
-        iter([xlsx_bytes]),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        iter([file_bytes]),
+        media_type=media_type,
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
@@ -1607,6 +1651,41 @@ def api_kb_health(
         "categories": rows,
         "overall_health": overall,
         "total_questions": total_q,
+    }
+
+
+# ── RAG evaluation ────────────────────────────────────────────────────────────
+
+@router.get("/admin/rag-eval")
+async def api_rag_eval(
+    top_k: int = 8,
+    sample_size: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_role(current_user, "owner", "admin")
+    from app.services.evaluation import evaluate_retrieval
+    report = await evaluate_retrieval(
+        org_id=current_user.org_id,
+        db=db,
+        top_k=top_k,
+        sample_size=sample_size,
+    )
+    return {
+        "questions_evaluated": report.questions_evaluated,
+        "coverage":            report.coverage,
+        "hit_rate_at_k":       report.hit_rate_at_k,
+        "precision_at_1":      report.precision_at_1,
+        "mrr":                 report.mrr,
+        "avg_top1_similarity": report.avg_top1_similarity,
+        "top_k":               report.top_k,
+        "warnings":            report.warnings,
+        "interpretation": {
+            "hit_rate_at_k":   f"% of questions where ≥1 correct chunk in top {top_k}",
+            "precision_at_1":  "% of questions where top-1 result is correct",
+            "mrr":             "Mean Reciprocal Rank (1.0 = perfect, 0.0 = never in top-k)",
+            "avg_similarity":  "Average vector similarity of top-1 result (higher = better)",
+        },
     }
 
 

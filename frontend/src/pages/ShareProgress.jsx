@@ -50,7 +50,7 @@ export default function ShareProgress() {
         {/* Brand */}
         <div style={{ marginBottom: 32 }}>
           <span style={{ background: '#2563eb', color: 'white', padding: '5px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700 }}>
-            Sentinel GRC
+            Greenlight
           </span>
         </div>
 

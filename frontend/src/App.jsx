@@ -13,7 +13,6 @@ import KnowledgeBase from './pages/KnowledgeBase'
 import UploadKnowledge from './pages/UploadKnowledge'
 import AnswerLibrary from './pages/AnswerLibrary'
 import Templates from './pages/Templates'
-import UsagePage from './pages/UsagePage'
 import AuditLog from './pages/AuditLog'
 import Team from './pages/Team'
 import ForgotPassword from './pages/ForgotPassword'
@@ -57,7 +56,6 @@ export default function App() {
             <Route path="knowledge/health" element={<KBHealth />} />
             <Route path="knowledge/upload" element={<UploadKnowledge />} />
             <Route path="answers/library" element={<AnswerLibrary />} />
-            <Route path="admin/usage" element={<UsagePage />} />
             <Route path="admin/audit" element={<AuditLog />} />
             <Route path="admin/team"            element={<Team />} />
             <Route path="account/password"      element={<ChangePassword />} />

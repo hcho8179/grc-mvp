@@ -144,11 +144,35 @@ class KnowledgeChunk(Base):
     text = Column(Text, nullable=False)
     embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
 
+    # Parent-child hierarchy: child chunks are embedded for retrieval;
+    # parent chunks provide wider context to the LLM.
+    is_leaf        = Column(Boolean, default=True, nullable=False, server_default="true")
+    parent_chunk_id = Column(
+        Integer,
+        ForeignKey("knowledge_chunks.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
     cited_in = relationship(
         "Question",
         secondary="question_citations",
         back_populates="cited_chunks",
     )
+
+
+# ---------------------------------------------------------------------------
+# Chunk feedback — relevance signal from reviewer approve/reject/regen
+# ---------------------------------------------------------------------------
+
+class ChunkFeedback(Base):
+    __tablename__ = "chunk_feedback"
+
+    id         = Column(Integer, primary_key=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    chunk_id   = Column(Integer, ForeignKey("knowledge_chunks.id", ondelete="CASCADE"), nullable=False, index=True)
+    org_id     = Column(Integer, ForeignKey("organizations.id",    ondelete="CASCADE"), nullable=False, index=True)
+    signal     = Column(String(8), nullable=False)  # "positive" | "negative"
 
 
 # ---------------------------------------------------------------------------
