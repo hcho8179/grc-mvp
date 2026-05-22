@@ -46,6 +46,7 @@ class Organization(Base):
 
     name = Column(String(256), nullable=False)
     slug = Column(String(64), unique=True, index=True, nullable=False)
+    white_label_export = Column(Boolean, default=False, nullable=False, server_default="false")
 
     users = relationship("User", back_populates="org", cascade="all, delete-orphan")
 
@@ -191,6 +192,7 @@ class Questionnaire(Base):
     raw_xlsx_blob = Column(LargeBinary, nullable=True)  # legacy — new uploads use raw_xlsx_key
     raw_xlsx_key  = Column(String(512), nullable=True)  # S3 object key
     deleted_at    = Column(DateTime(timezone=True), nullable=True, index=True)
+    share_token   = Column(String(64), unique=True, nullable=True, index=True)
     answer_col_index = Column(Integer, nullable=True)            # 0-based; primary answer col (Yes/No when two cols selected)
     secondary_answer_col_index = Column(Integer, nullable=True)  # 0-based; evidence/comments col (full answer goes here)
     question_col_index = Column(Integer, nullable=True)          # 0-based; which column has questions
@@ -410,6 +412,23 @@ class Invite(Base):
 # ---------------------------------------------------------------------------
 # Job queue  (Postgres-backed — survives server restarts)
 # ---------------------------------------------------------------------------
+
+class AnswerVersion(Base):
+    __tablename__ = "answer_versions"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    org_id      = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id     = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    user_email  = Column(String(256), nullable=True)
+    user_name   = Column(String(256), nullable=True)
+
+    action       = Column(String(32), nullable=False)  # "edited" | "approved" | "rejected"
+    draft_answer = Column(Text, nullable=True)
+    short_answer = Column(String(32), nullable=True)
+
 
 class JobStatus(str, enum.Enum):
     pending = "pending"

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import Question, Questionnaire
 
 
-def export_questionnaire_to_xlsx(questionnaire_id: int, db: Session) -> bytes:
+def export_questionnaire_to_xlsx(questionnaire_id: int, db: Session, white_label: bool = False) -> bytes:
     """Return a filled XLSX as bytes.
 
     Loads the raw_xlsx_blob saved at upload time, writes each question's
@@ -85,8 +85,9 @@ def export_questionnaire_to_xlsx(questionnaire_id: int, db: Session) -> bytes:
             _safe_write(xlsx_row, ans_col, question.final_answer)
 
     # Footer: two rows below the last data row
-    footer_row = (q.question_count or 0) + 3
-    ws.cell(row=footer_row, column=1, value="Generated with Sentinel GRC")
+    if not white_label:
+        footer_row = (q.question_count or 0) + 3
+        ws.cell(row=footer_row, column=1, value="Generated with Sentinel GRC")
 
     buf = io.BytesIO()
     wb.save(buf)

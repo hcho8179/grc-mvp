@@ -16,6 +16,7 @@ from collections import defaultdict
 from app.auth import get_current_user
 from app.db import get_db
 from app.models import (
+    AnswerVersion,
     ApprovedAnswer,
     AuditLog,
     ConfidenceLevel,
@@ -24,6 +25,7 @@ from app.models import (
     KnowledgeChunk,
     LLMCall,
     Notification,
+    Organization,
     Question,
     QuestionComment,
     QuestionnaireStatus,
@@ -64,6 +66,20 @@ def _require_role(user: User, *roles: str) -> None:
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+def _confidence_reason(q: Question) -> str | None:
+    if q.confidence != ConfidenceLevel.low or q.status.value != "generated":
+        return None
+    if not (q.cited_chunk_ids or []):
+        return (
+            "No documents in your knowledge base matched this question. "
+            "Visit KB Health to identify topic gaps, or write this answer manually."
+        )
+    return (
+        "The closest matching documents were a weak match — this question may reference "
+        "topics not well covered in your current policies. Review carefully before approving."
+    )
+
+
 def _q_json(q: Question, assignee: User | None = None, chunk_scores: dict | None = None, starter_chunk_ids: set | None = None) -> dict:
     scores = chunk_scores or {}
     cited = [{"id": cid, "score": scores.get(cid)} for cid in (q.cited_chunk_ids or [])]
@@ -79,8 +95,9 @@ def _q_json(q: Question, assignee: User | None = None, chunk_scores: dict | None
         "final_answer": q.final_answer or "",
         "status": q.status.value,
         "confidence": q.confidence.value if q.confidence else None,
+        "confidence_reason": _confidence_reason(q),
         "cited_chunk_ids": q.cited_chunk_ids or [],
-        "cited_chunks": cited,   # [{id, score}] — score is cosine similarity 0–1
+        "cited_chunks": cited,
         "reasoning": q.reasoning or "",
         "has_starter_sources": has_starter,
         "no_kb_context": q.status.value == "generated" and not (q.draft_answer or "").strip() and not (q.cited_chunk_ids or []),
@@ -89,6 +106,19 @@ def _q_json(q: Question, assignee: User | None = None, chunk_scores: dict | None
         "assigned_to_email": assignee.email if assignee else None,
         "assigned_to_name": assignee.full_name if assignee else None,
     }
+
+
+def _record_version(db: Session, q: Question, user: User, action: str) -> None:
+    db.add(AnswerVersion(
+        question_id=q.id,
+        org_id=user.org_id,
+        user_id=user.id,
+        user_email=user.email,
+        user_name=user.full_name or "",
+        action=action,
+        draft_answer=q.draft_answer,
+        short_answer=q.short_answer,
+    ))
 
 
 def _save_citation_scores(db: Session, question_id: int, chunks: list, cited_ids: list[int]) -> dict[int, float]:
@@ -126,6 +156,7 @@ def _qs_json(q: Questionnaire) -> dict:
         "status": q.status.value,
         "question_count": q.question_count,
         "created_at": q.created_at.isoformat(),
+        "share_token": q.share_token or None,
     }
 
 
@@ -595,7 +626,8 @@ async def api_approve_question(
 
     q.final_answer = q.draft_answer
     q.status = QuestionStatus.approved
-    q.conflict_warning = None  # resolved on approval
+    q.conflict_warning = None
+    _record_version(db, q, current_user, "approved")
 
     if q.final_answer and q.question_text:
         doc = _get_approved_doc(db, current_user.org_id)
@@ -693,6 +725,7 @@ def api_reject_question(
 
     q.status = QuestionStatus.rejected
     q.final_answer = None
+    _record_version(db, q, current_user, "rejected")
     log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
               action="question.rejected", resource_type="question", resource_id=q.id,
               detail={"questionnaire_id": questionnaire_id})
@@ -767,7 +800,9 @@ def api_update_question(
     ).first()
     if not q:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    q.draft_answer = draft_answer
+    if draft_answer != (q.draft_answer or ""):
+        q.draft_answer = draft_answer
+        _record_version(db, q, current_user, "edited")
     log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
               action="question.edited", resource_type="question", resource_id=q.id,
               detail={"questionnaire_id": questionnaire_id})
@@ -788,7 +823,9 @@ def api_export_questionnaire(
     ).first()
     if not qs:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    xlsx_bytes = export_questionnaire_to_xlsx(questionnaire_id, db)
+    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
+    white_label = bool(org and org.white_label_export)
+    xlsx_bytes = export_questionnaire_to_xlsx(questionnaire_id, db, white_label=white_label)
     log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
               action="questionnaire.exported", resource_type="questionnaire", resource_id=questionnaire_id,
               detail={"name": qs.name})
@@ -882,7 +919,6 @@ def api_restore_questionnaire(
 
     # Notify the org owner so they can investigate if this was unexpected
     from app.services.jobs import enqueue
-    from app.models import Organization
     org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
     owner = db.query(User).filter(User.org_id == current_user.org_id, User.role == "owner").first()
     if owner and owner.email != current_user.email:
@@ -1099,23 +1135,60 @@ def api_answer_library(
         .all()
     )
 
+    # Bulk-load source questionnaire info via source_question_id
+    question_ids = [a.source_question_id for a in answers if a.source_question_id]
+    qs_by_question: dict[int, Questionnaire] = {}
+    if question_ids:
+        rows = (
+            db.query(Question.id, Questionnaire.id, Questionnaire.name, Questionnaire.customer_name)
+            .join(Questionnaire, Question.questionnaire_id == Questionnaire.id)
+            .filter(Question.id.in_(question_ids))
+            .all()
+        )
+        for q_id, qs_id, qs_name, qs_customer in rows:
+            qs_by_question[q_id] = {"id": qs_id, "name": qs_name, "customer_name": qs_customer}
+
+    def _answer_json(a: ApprovedAnswer) -> dict:
+        src = qs_by_question.get(a.source_question_id) if a.source_question_id else None
+        return {
+            "id": a.id,
+            "question_text": a.question_text,
+            "answer_text": a.answer_text,
+            "answer_category": a.answer_category,
+            "times_reused": a.times_reused,
+            "created_at": a.created_at.isoformat(),
+            "source_questionnaire_id": src["id"] if src else None,
+            "source_questionnaire_name": src["name"] if src else None,
+            "source_customer_name": src["customer_name"] if src else None,
+        }
+
     return {
-        "answers": [
-            {
-                "id": a.id,
-                "question_text": a.question_text,
-                "answer_text": a.answer_text,
-                "answer_category": a.answer_category,
-                "times_reused": a.times_reused,
-                "created_at": a.created_at.isoformat(),
-            }
-            for a in answers
-        ],
+        "answers": [_answer_json(a) for a in answers],
         "categories": [{"name": c, "count": n} for c, n in cats],
         "total": db.query(ApprovedAnswer).filter(ApprovedAnswer.org_id == current_user.org_id, ApprovedAnswer.status == "active").count(),
         "total_reuses": db.query(func.sum(ApprovedAnswer.times_reused)).filter(
             ApprovedAnswer.org_id == current_user.org_id, ApprovedAnswer.status == "active").scalar() or 0,
     }
+
+
+@router.post("/answers/library/{answer_id}/archive")
+def api_archive_answer(
+    answer_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    answer = db.query(ApprovedAnswer).filter(
+        ApprovedAnswer.id == answer_id,
+        ApprovedAnswer.org_id == current_user.org_id,
+    ).first()
+    if not answer:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    answer.status = "archived"
+    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+              action="answer.archived", resource_type="approved_answer", resource_id=answer_id,
+              detail={"question_text": answer.question_text[:120]})
+    db.commit()
+    return {"status": "ok"}
 
 
 # ── templates ─────────────────────────────────────────────────────────────────
@@ -1622,3 +1695,124 @@ def api_mark_all_notifications_read(
     ).update({"read": True}, synchronize_session=False)
     db.commit()
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Share progress link
+# ---------------------------------------------------------------------------
+
+@router.post("/questionnaires/{questionnaire_id}/share-token")
+def api_get_share_token(
+    questionnaire_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    qs = db.query(Questionnaire).filter(
+        Questionnaire.id == questionnaire_id,
+        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.deleted_at == None,
+    ).first()
+    if not qs:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    if not qs.share_token:
+        import secrets
+        qs.share_token = secrets.token_urlsafe(32)
+        db.commit()
+    return {"token": qs.share_token}
+
+
+@router.get("/share/{token}")
+def api_public_share(token: str, db: Session = Depends(get_db)):
+    qs = db.query(Questionnaire).filter(
+        Questionnaire.share_token == token,
+        Questionnaire.deleted_at == None,
+    ).first()
+    if not qs:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    questions = db.query(Question).filter(Question.questionnaire_id == qs.id).all()
+    total    = len(questions)
+    approved = sum(1 for q in questions if q.status == QuestionStatus.approved)
+    rejected = sum(1 for q in questions if q.status == QuestionStatus.rejected)
+    pending  = sum(1 for q in questions if q.status in (QuestionStatus.pending, QuestionStatus.generated))
+    pct      = round((approved / total) * 100) if total else 0
+    return {
+        "name": qs.name,
+        "customer_name": qs.customer_name or "",
+        "created_at": qs.created_at.isoformat(),
+        "total": total,
+        "approved": approved,
+        "rejected": rejected,
+        "pending": pending,
+        "pct": pct,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Answer version history
+# ---------------------------------------------------------------------------
+
+@router.get("/questionnaires/{questionnaire_id}/questions/{question_id}/history")
+def api_question_history(
+    questionnaire_id: int,
+    question_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Question).filter(
+        Question.id == question_id,
+        Question.questionnaire_id == questionnaire_id,
+    ).first()
+    if not q:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    versions = (
+        db.query(AnswerVersion)
+        .filter(AnswerVersion.question_id == question_id)
+        .order_by(AnswerVersion.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    return {"versions": [
+        {
+            "id": v.id,
+            "action": v.action,
+            "user_email": v.user_email or "",
+            "user_name": v.user_name or "",
+            "draft_answer": v.draft_answer or "",
+            "short_answer": v.short_answer or "",
+            "created_at": v.created_at.isoformat(),
+        }
+        for v in versions
+    ]}
+
+
+# ---------------------------------------------------------------------------
+# Org settings
+# ---------------------------------------------------------------------------
+
+@router.get("/org/settings")
+def api_get_org_settings(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
+    return {"white_label_export": bool(org.white_label_export) if org else False}
+
+
+class OrgSettingsBody(BaseModel):
+    white_label_export: bool
+
+
+@router.patch("/org/settings")
+def api_update_org_settings(
+    body: OrgSettingsBody,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role != "owner":
+        return JSONResponse({"error": "Only the workspace owner can change org settings."}, status_code=403)
+    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
+    if not org:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    org.white_label_export = body.white_label_export
+    db.commit()
+    return {"white_label_export": org.white_label_export}

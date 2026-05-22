@@ -157,7 +157,8 @@ Since this is a security product, I want to be transparent about how the tool it
 
 **Data protection**
 - Uploaded files (Excel questionnaires, policy documents) are stored in S3-compatible object storage — not in the database
-- All data is scoped to the organisation — no data from one customer is ever visible to another
+- All data is scoped to the organisation at the database query level — every query is filtered by `org_id`, making cross-tenant data access structurally impossible without a deliberate application bypass
+- For consulting firms managing multiple clients: each client is a fully isolated workspace with its own `org_id`. No query, search, or suggestion can ever surface data from one client workspace in another. The answer library, knowledge base, and all AI drafting are strictly per-org.
 - Soft deletes only — data is never permanently destroyed without explicit action
 
 **Application security**
@@ -180,12 +181,8 @@ Since this is a security product, I want to be transparent about how the tool it
 **Coming soon**
 - MFA (authenticator app / TOTP) — opt-in per user, with org-level enforcement for admins
 - Data retention / purge job — soft-deleted items auto-permanently removed after 90 days (with privacy policy disclosure)
-- Email notifications — alerts when a question is assigned to you, when a questionnaire is ready for review
 - SSO / SAML — single sign-on via Google Workspace, Okta, Azure AD
 - Org-level admin settings — force MFA for all members, configure data retention period
-- Answer version history — full edit trail showing who changed an answer and what it said before
-- Answer source traceability — each approved answer remembers which questionnaire and customer it originally came from, so reviewers can trace provenance even after the questionnaire is archived
-- Archive / remove answer from library — let reviewers manually archive or delete a specific answer from the Answer Library without having to delete the whole questionnaire
 - Multi-sheet Excel support — questionnaires that span multiple tabs in the same file
 - Word and PDF questionnaire upload — not just Excel files
 - Web portal integrations — OneTrust, Vanta, Whistic (for customers who share a portal link instead of a file)

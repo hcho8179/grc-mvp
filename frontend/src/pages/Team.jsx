@@ -38,6 +38,23 @@ export default function Team() {
 
   const canInvite = me?.role === 'owner' || me?.role === 'admin'
 
+  // Org settings
+  const [whiteLabelExport, setWhiteLabelExport] = useState(false)
+  const [savingSettings, setSavingSettings] = useState(false)
+
+  useEffect(() => {
+    if (me?.role === 'owner') {
+      api.getOrgSettings().then(d => setWhiteLabelExport(d.white_label_export)).catch(() => {})
+    }
+  }, [me?.role])
+
+  const handleToggleWhiteLabel = async (val) => {
+    setWhiteLabelExport(val)
+    setSavingSettings(true)
+    try { await api.updateOrgSettings({ white_label_export: val }) } catch {}
+    setSavingSettings(false)
+  }
+
   const loadInvites = () => {
     if (!canInvite) return
     api.listInvites().then(setInvites).catch(() => {})
@@ -181,6 +198,31 @@ export default function Team() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Workspace settings — owner only */}
+        {isOwner && (
+          <div className="rounded-xl p-5 mb-6" style={t.card}>
+            <p className="text-xs font-semibold mb-1" style={{ color: t.text3 }}>Workspace settings</p>
+            <div className="flex items-center justify-between mt-3">
+              <div>
+                <p className="text-sm font-semibold" style={{ color: t.text }}>White-label exports</p>
+                <p className="text-xs mt-0.5" style={{ color: t.text3 }}>
+                  Remove the "Generated with Sentinel GRC" footer from exported files.
+                </p>
+              </div>
+              <button
+                onClick={() => handleToggleWhiteLabel(!whiteLabelExport)}
+                disabled={savingSettings}
+                className="relative flex-shrink-0 w-10 h-6 rounded-full transition-colors duration-200 disabled:opacity-50"
+                style={{ background: whiteLabelExport ? t.primary : (t.dark ? 'rgba(255,255,255,0.12)' : '#d1d5db') }}>
+                <span
+                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200"
+                  style={{ transform: whiteLabelExport ? 'translateX(16px)' : 'translateX(0)' }}
+                />
+              </button>
+            </div>
           </div>
         )}
 

@@ -294,6 +294,72 @@ function AssignDropdown({ q, questionnaireId, teamMembers, currentUser, onAssign
   )
 }
 
+// ── Version history panel ────────────────────────────────────────────────
+function VersionHistoryPanel({ questionnaireId, questionId, t }) {
+  const [open, setOpen] = useState(false)
+  const [versions, setVersions] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    api.getQuestionHistory(questionnaireId, questionId)
+      .then(d => setVersions(d.versions))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [open, questionId])
+
+  const ACTION_STYLE = {
+    approved: { color: '#16a34a', label: 'Approved' },
+    rejected: { color: '#dc2626', label: 'Rejected' },
+    edited:   { color: '#6b7280', label: 'Edited' },
+  }
+
+  return (
+    <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${t.borderColor}` }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-xs font-semibold mb-2 hover:opacity-70 transition-opacity"
+        style={{ color: t.text3 }}>
+        <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▶</span>
+        Edit history
+      </button>
+      {open && (
+        <div className="space-y-2">
+          {loading && <div className="skeleton h-10 rounded-lg" />}
+          {!loading && versions.length === 0 && (
+            <p className="text-xs" style={{ color: t.text3 }}>No recorded edits yet.</p>
+          )}
+          {!loading && versions.map(v => {
+            const s = ACTION_STYLE[v.action] || ACTION_STYLE.edited
+            return (
+              <div key={v.id} className="rounded-lg px-3 py-2.5"
+                   style={{ background: t.dark ? 'rgba(255,255,255,0.03)' : '#f9fafb',
+                            border: `1px solid ${t.borderColor}` }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: s.color }}>{s.label}</span>
+                  <span className="text-[10px]" style={{ color: t.text3 }}>
+                    {v.user_name || v.user_email} · {new Date(v.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  {v.short_answer && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>
+                      {v.short_answer}
+                    </span>
+                  )}
+                </div>
+                {v.draft_answer && (
+                  <p className="text-xs leading-relaxed line-clamp-3" style={{ color: t.text2 }}>{v.draft_answer}</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Question detail panel (right side) ───────────────────────────────────
 function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, onApprove, onReject, onRegen, onAssigned, animClass, t }) {
   const [answer, setAnswer] = useState(q.draft_answer || '')
@@ -370,6 +436,15 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
             </span>
           </div>
         )}
+        {q.confidence_reason && (
+          <div className="mb-3 flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-xs"
+               style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', color: '#b91c1c' }}>
+            <span className="mt-0.5 flex-shrink-0 text-sm">↓</span>
+            <span>
+              <span className="font-semibold">Low confidence — </span>{q.confidence_reason}
+            </span>
+          </div>
+        )}
         {q.conflict_warning && (
           <div className="mb-3 flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-xs"
                style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', color: '#92400e' }}>
@@ -405,6 +480,7 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
 
         <ReasoningPanel reasoning={q.reasoning} t={t} />
         <SourcesPanel citedChunks={q.cited_chunks} t={t} />
+        <VersionHistoryPanel questionnaireId={questionnaireId} questionId={q.id} t={t} />
         <CommentsPanel
           questionnaireId={questionnaireId}
           questionId={q.id}
@@ -489,6 +565,8 @@ export default function QuestionnaireDetail() {
   const [animMap, setAnimMap] = useState({})
   const [toast, setToast] = useState(null)
   const [teamMembers, setTeamMembers] = useState([])
+  const [shareLink, setShareLink] = useState(null)
+  const [shareCopied, setShareCopied] = useState(false)
   const initializedRef = useRef(false)
 
   const load = useCallback(() => {
@@ -614,6 +692,28 @@ export default function QuestionnaireDetail() {
       await load()
       showToast(`Approved ${res.approved} answers`, 'green')
     } catch { showToast('Bulk approve failed', 'red') }
+  }
+
+  // Initialise share link if already generated
+  useEffect(() => {
+    if (qs?.share_token) setShareLink(`${window.location.origin}/share/${qs.share_token}`)
+  }, [qs?.share_token])
+
+  const handleShare = async () => {
+    if (shareLink) {
+      navigator.clipboard.writeText(shareLink)
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2000)
+      return
+    }
+    try {
+      const res = await api.getShareToken(id)
+      const link = `${window.location.origin}/share/${res.token}`
+      setShareLink(link)
+      navigator.clipboard.writeText(link)
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2000)
+    } catch { showToast('Failed to generate link', 'red') }
   }
 
   // Keyboard shortcuts
@@ -841,6 +941,14 @@ export default function QuestionnaireDetail() {
             <span className="text-xs ml-2" style={{ color: t.text3 }}>
               <kbd className="kbd">A</kbd> approve · <kbd className="kbd">X</kbd> reject · <kbd className="kbd">R</kbd> regen
             </span>
+            <button
+              onClick={handleShare}
+              className="ml-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
+              style={{ background: t.dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                       color: t.text2, border: `1px solid ${t.borderColor}` }}
+              title="Copy a read-only progress link to share with stakeholders">
+              {shareCopied ? '✓ Copied' : shareLink ? 'Copy progress link' : 'Share progress'}
+            </button>
           </div>
         </div>
 

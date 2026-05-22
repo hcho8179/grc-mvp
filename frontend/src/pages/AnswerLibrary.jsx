@@ -9,11 +9,25 @@ export default function AnswerLibrary() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
+  const [archiving, setArchiving] = useState(null)
+  const [confirmArchive, setConfirmArchive] = useState(null)
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true)
     api.getAnswerLibrary(search, category).then(setData).catch(console.error).finally(() => setLoading(false))
-  }, [search, category])
+  }
+
+  useEffect(() => { load() }, [search, category])
+
+  const handleArchive = async (answer) => {
+    setArchiving(answer.id)
+    try {
+      await api.archiveAnswer(answer.id)
+      setData(prev => ({ ...prev, answers: prev.answers.filter(a => a.id !== answer.id), total: prev.total - 1 }))
+    } catch {}
+    setArchiving(null)
+    setConfirmArchive(null)
+  }
 
   return (
     <div className="h-full overflow-y-auto">
@@ -87,7 +101,7 @@ export default function AnswerLibrary() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: t.tableHead, borderBottom: `1px solid ${t.borderColor}` }}>
-                  {['Question', 'Answer', 'Category', 'Reuses', 'Added'].map(h => (
+                  {['Question', 'Answer', 'Category', 'Source', 'Reuses', 'Added', ''].map(h => (
                     <th key={h} className="px-5 py-3 text-left text-xs font-semibold" style={{ color: t.text3 }}>{h}</th>
                   ))}
                 </tr>
@@ -101,7 +115,7 @@ export default function AnswerLibrary() {
                     <td className="px-5 py-4 max-w-[200px]">
                       <p className="text-xs font-medium leading-relaxed line-clamp-3" style={{ color: t.text }}>{a.question_text}</p>
                     </td>
-                    <td className="px-5 py-4 max-w-[300px]">
+                    <td className="px-5 py-4 max-w-[280px]">
                       <p className="text-xs leading-relaxed line-clamp-4" style={{ color: t.text2 }}>{a.answer_text}</p>
                     </td>
                     <td className="px-5 py-4">
@@ -112,6 +126,18 @@ export default function AnswerLibrary() {
                                        border: `1px solid ${t.dark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.3)'}` }}>
                           {a.answer_category}
                         </span>
+                      ) : <span className="text-xs" style={{ color: t.text3 }}>—</span>}
+                    </td>
+                    <td className="px-5 py-4 max-w-[160px]">
+                      {a.source_questionnaire_id ? (
+                        <a href={`/questionnaires/${a.source_questionnaire_id}`}
+                           className="text-xs font-medium hover:underline leading-snug block"
+                           style={{ color: t.primary }}>
+                          {a.source_customer_name
+                            ? <><span className="block" style={{ color: t.text }}>{a.source_customer_name}</span>
+                                <span style={{ color: t.text3 }} className="line-clamp-1">{a.source_questionnaire_name}</span></>
+                            : <span className="line-clamp-2">{a.source_questionnaire_name}</span>}
+                        </a>
                       ) : <span className="text-xs" style={{ color: t.text3 }}>—</span>}
                     </td>
                     <td className="px-5 py-4">
@@ -125,11 +151,50 @@ export default function AnswerLibrary() {
                     <td className="px-5 py-4 text-xs" style={{ color: t.text3 }}>
                       {new Date(a.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                     </td>
+                    <td className="px-5 py-4">
+                      <button
+                        onClick={() => setConfirmArchive(a)}
+                        disabled={archiving === a.id}
+                        title="Remove from library"
+                        className="p-1.5 rounded-lg transition-all hover:opacity-80 disabled:opacity-30"
+                        style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
+                        <Icon name="trash" size={13} color="#ef4444" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {/* Confirm archive modal */}
+          {confirmArchive && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center"
+                 style={{ background: 'rgba(0,0,0,0.5)' }}
+                 onClick={() => setConfirmArchive(null)}>
+              <div className="rounded-2xl p-6 w-full max-w-sm mx-4" style={t.card}
+                   onClick={e => e.stopPropagation()}>
+                <h3 className="text-base font-bold mb-2" style={{ color: t.text }}>Remove from library?</h3>
+                <p className="text-sm mb-1 leading-relaxed" style={{ color: t.text2 }}>
+                  This answer will no longer appear as a suggestion in future questionnaires.
+                </p>
+                <p className="text-xs mb-5 line-clamp-2" style={{ color: t.text3 }}>"{confirmArchive.question_text}"</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setConfirmArchive(null)}
+                          className="flex-1 py-2 rounded-xl text-sm font-semibold transition-opacity hover:opacity-70"
+                          style={{ background: t.dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', color: t.text2 }}>
+                    Cancel
+                  </button>
+                  <button onClick={() => handleArchive(confirmArchive)}
+                          disabled={archiving === confirmArchive.id}
+                          className="flex-1 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                          style={{ background: '#ef4444' }}>
+                    {archiving === confirmArchive.id ? 'Removing…' : 'Remove'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         )}
       </div>
     </div>

@@ -24,6 +24,7 @@ import KBHealth from './pages/KBHealth'
 import VerifyEmail from './pages/VerifyEmail'
 import Trash from './pages/Trash'
 import InvitePage from './pages/InvitePage'
+import ShareProgress from './pages/ShareProgress'
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/reset-password"  element={<ResetPassword />} />
           <Route path="/verify-email"    element={<VerifyEmail />} />
           <Route path="/invite/:token"   element={<InvitePage />} />
+          <Route path="/share/:token"    element={<ShareProgress />} />
 
           {/* Protected app routes */}
           <Route element={

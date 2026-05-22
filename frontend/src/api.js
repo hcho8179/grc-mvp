@@ -81,6 +81,7 @@ export const api = {
   // Answer library
   getAnswerLibrary: (q = '', category = '') =>
     get(`/answers/library?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}`),
+  archiveAnswer: (id) => post(`/answers/library/${id}/archive`, {}),
 
   // Templates
   getTemplates:    ()    => get('/templates'),
@@ -134,6 +135,22 @@ export const api = {
   getNotifications:       ()   => get('/notifications'),
   markNotificationRead:   (id) => post(`/notifications/${id}/read`, {}),
   markAllNotificationsRead: () => post('/notifications/read-all', {}),
+
+  // Share progress
+  getShareToken:    (id)     => post(`/questionnaires/${id}/share-token`, {}),
+  getShareProgress: (token)  => fetch(`/api/share/${token}`).then(r => r.json()),
+
+  // Answer version history
+  getQuestionHistory: (qsId, qId) => get(`/questionnaires/${qsId}/questions/${qId}/history`),
+
+  // Org settings
+  getOrgSettings:    ()       => get('/org/settings'),
+  updateOrgSettings: (data)   => fetch('/api/org/settings', {
+    ...OPTS,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(r => r.json()),
 
   // Invites
   createInvite:    ()   => post('/auth/invites', {}),
