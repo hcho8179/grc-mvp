@@ -67,7 +67,7 @@ Before answering any questionnaires, the team uploads their company's security d
 
 The system processes each document and breaks it into searchable chunks. When a question comes in later, it finds the most relevant parts of these documents and uses them to draft an answer.
 
-**For new customers with no documents yet:** the system's Answer Library is pre-loaded with 45 Australian GRC Q&A pairs covering the Essential Eight, Privacy Act, APRA CPS 234, and ISO 27001. These are real, well-written answers to the most commonly asked Australian security questions — so the AI can start drafting useful answers from the very first questionnaire, even before any documents are uploaded.
+**For new customers with no documents yet:** the system's Answer Library is pre-loaded with 45 Australian GRC Q&A pairs covering the Essential Eight, Privacy Act, APRA CPS 234, and ISO 27001. These are real, well-written answers to the most commonly asked Australian security questions — so the system can start drafting useful answers from the very first questionnaire, even before any documents are uploaded.
 
 ---
 
@@ -81,7 +81,7 @@ Greenlight accepts questionnaires in three formats: **Excel (.xlsx)**, **Word (.
 
 This works with any Excel layout — no template required. Hidden rows (common in complex enterprise Excel questionnaires) are automatically skipped.
 
-**Word and PDF questionnaires** skip the column picker entirely — the AI reads the document, identifies every question automatically, and presents them for confirmation before import. The reviewer sees the full extracted question list and confirms with one click.
+**Word and PDF questionnaires** skip the column picker entirely — the system reads the document, identifies every question, and presents them for confirmation before import. The reviewer sees the full extracted question list and confirms with one click.
 
 In consulting firm mode, the reviewer also enters the customer name (e.g. "Atlas Bank") at this step, which powers the client answer isolation described below. In company mode, this field does not appear.
 
@@ -133,9 +133,9 @@ The exported file is named with the questionnaire name and today's date, ready t
 
 ---
 
-### What happens if the AI is wrong?
+### What happens if a draft is wrong?
 
-Nothing leaves without a human approving it. Every answer is explicitly marked as a draft until a reviewer reads it and signs off. The system is designed as a co-pilot, not an autopilot — the AI does the research and writing, the human makes every final decision.
+Nothing leaves without a human approving it. Every answer is explicitly marked as a draft until a reviewer reads it and signs off. The system is designed as a co-pilot, not an autopilot — the system does the research and writing, the human makes every final decision.
 
 The audit log records exactly who approved which answer, when, and from which source documents. If a customer ever questions an answer, you have a full traceable record. If an answer is later found to be wrong, you reject it and re-draft — it takes seconds, and the system learns from the correction.
 
@@ -199,11 +199,11 @@ Owners can invite team members by email. Three roles:
 
 ### How long does it actually take?
 
-The AI drafting speed is fixed and measurable — with a 6-second gap between questions (to stay within API rate limits), a 200-question questionnaire takes roughly 20 minutes to draft. The human review time depends heavily on knowledge base maturity and questionnaire complexity.
+Drafting speed is fixed and measurable — with a 6-second gap between questions (to stay within rate limits), a 200-question questionnaire takes roughly 20 minutes to draft. The human review time depends heavily on knowledge base maturity and questionnaire complexity.
 
 **Realistic time estimates:**
 
-| Scenario | AI drafting | Human review | Total |
+| Scenario | Drafting | Human review | Total |
 |---|---|---|---|
 | Small check (6–20 questions) | 1–2 min | 5–15 min | **~15–20 min** |
 | Medium questionnaire (50–100 questions) | 5–10 min | 30–60 min | **~1 hour** |
@@ -231,22 +231,22 @@ A 200-question enterprise questionnaire done manually typically takes a GRC cons
 
 ### How Greenlight prevents hallucinations
 
-AI hallucination — where a model confidently states something false — is a serious risk in a compliance context. A hallucinated answer on a security questionnaire could misrepresent your security posture to a customer or regulator. Greenlight has five layers of defence against this:
+Hallucination — where the system confidently states something false — is a serious risk in a compliance context. A hallucinated answer on a security questionnaire could misrepresent your security posture to a customer or regulator. Greenlight has five layers of defence against this:
 
 **1. Grounded generation only**
-The AI is explicitly instructed to answer solely from the retrieved document chunks and approved answers provided to it. It is told not to invent facts, fill gaps from general knowledge, or assume capabilities that aren't evidenced in the source material. If the sources don't support a claim, the AI is instructed to say so rather than guess.
+The system is explicitly instructed to answer solely from the retrieved document chunks and approved answers provided to it. It is told not to invent facts, fill gaps from general knowledge, or assume capabilities that aren't evidenced in the source material. If the sources don't support a claim, the system is instructed to say so rather than guess.
 
 **2. Every source shown to the reviewer**
-Every drafted answer displays the exact document passages and previously approved answers it drew from, each with a relevance match score. The reviewer can read the source alongside the answer and immediately spot if the AI has stretched or misrepresented it.
+Every drafted answer displays the exact document passages and previously approved answers it drew from, each with a relevance match score. The reviewer can read the source alongside the answer and immediately spot if the draft has stretched or misrepresented it.
 
 **3. Confidence scoring flags weak matches**
 When the knowledge base has little or nothing relevant to a question, the retrieval scores are low — and the system reflects this with a Low confidence badge. Low-confidence answers are visually flagged so reviewers know exactly where to focus their scrutiny, rather than treating every answer with the same level of trust.
 
 **4. "No knowledge base context" hard warning**
-If the retriever finds no relevant content at all, the question is marked with a red MANUAL badge and a warning: "No documents in your knowledge base matched this question." The reviewer is told explicitly that the AI had nothing to work from and the answer must be written manually. The AI never silently fabricates an answer to avoid looking uncertain.
+If the retriever finds no relevant content at all, the question is marked with a red MANUAL badge and a warning: "No documents in your knowledge base matched this question." The reviewer is told explicitly that the system had nothing to work from and the answer must be written manually. The system never silently fabricates an answer to avoid looking uncertain.
 
 **5. Human approval gate — nothing leaves without sign-off**
-Every answer stays in draft state until a human reviewer reads it and explicitly approves it. There is no automated export, no batch-send, no way for an answer to reach a customer without a person signing off. The approval is logged with the reviewer's name and timestamp. This gate exists precisely because AI output cannot be trusted unconditionally — the system is designed around that assumption.
+Every answer stays in draft state until a human reviewer reads it and explicitly approves it. There is no automated export, no batch-send, no way for an answer to reach a customer without a person signing off. The approval is logged with the reviewer's name and timestamp. This gate exists precisely because drafted output cannot be trusted unconditionally — the system is designed around that assumption.
 
 ---
 
@@ -273,9 +273,9 @@ Since this is a security product, I want to be transparent about how the tool it
 - Soft deletes only — data is never permanently destroyed without explicit action
 - **Live document replacement with staleness tracking** — when a policy changes, admins can replace the file in-place rather than deleting and re-uploading. The system drops all old chunks, re-parses and re-embeds the new content immediately, and preserves the document's ID so the audit trail remains intact
 
-**AI answer safety**
-- **Negation / trap-question detection** — security questionnaires sometimes use reverse-phrasing to catch dishonest vendors (e.g. "Are there any employees exempt from background checks?"). The AI is explicitly instructed to detect this pattern and verify that its Yes/No answer reflects the company's secure, compliant posture — not accidentally admit a gap through a keyword match
-- **Prompt injection defence** — every document uploaded to the knowledge base is sanitized before it is chunked and stored. Lines matching known injection patterns (system instruction overrides, "ignore previous instructions", model-specific tokens) are stripped and logged. At generation time, retrieved document chunks are wrapped in explicit data-only boundaries so the AI is structurally prevented from treating document content as commands
+**Answer safety**
+- **Negation / trap-question detection** — security questionnaires sometimes use reverse-phrasing to catch dishonest vendors (e.g. "Are there any employees exempt from background checks?"). The system is explicitly instructed to detect this pattern and verify that its Yes/No answer reflects the company's secure, compliant posture — not accidentally admit a gap through a keyword match
+- **Prompt injection defence** — every document uploaded to the knowledge base is sanitized before it is chunked and stored. Lines matching known injection patterns (system instruction overrides, "ignore previous instructions", model-specific tokens) are stripped and logged. At generation time, retrieved document chunks are wrapped in explicit data-only boundaries so the system is structurally prevented from treating document content as commands
 
 **Application security**
 - Security headers on every response: Content Security Policy, X-Frame-Options, Referrer-Policy, Permissions-Policy
@@ -284,7 +284,7 @@ Since this is a security product, I want to be transparent about how the tool it
 - File uploads: Excel files only, 20MB maximum size limit
 - All actions written to an immutable audit log
 
-**AI retrieval quality (RAG)**
+**Retrieval quality (RAG)**
 
 The engine that finds the right policy content for each question uses a multi-layer pipeline:
 
@@ -293,9 +293,9 @@ The engine that finds the right policy content for each question uses a multi-la
 - **Source-aware ranking** — previously approved human-reviewed answers are ranked 35% higher than generic policy documents. The more questionnaires a team completes, the more retrieval is weighted toward their own trusted answers
 - **Client-aware retrieval** — the retrieval SQL explicitly filters answer library chunks by client name. Generic answers and the current client's answers are retrieved; other clients' answers are excluded at the query level, not just filtered in application code
 - **Feedback learning** — every time a reviewer approves an answer, the source chunks that contributed receive a positive signal. Every rejection or re-draft triggers a negative signal. Over time, chunks that consistently produce bad answers are automatically down-ranked for that organisation
-- **Parent-child retrieval** — documents are stored at two levels: small child chunks (~150 tokens) for precise retrieval, and large parent chunks (~800 tokens) for rich LLM context. The system finds answers with the precision of a small chunk but sends the full surrounding section to the AI — 5× more context per result
+- **Parent-child retrieval** — documents are stored at two levels: small child chunks (~150 tokens) for precise retrieval, and large parent chunks (~800 tokens) for rich drafting context. The system finds answers with the precision of a small chunk but sends the full surrounding section to the drafting engine — 5× more context per result
 - **Semantic chunking** — documents are split at structural boundaries (headers, numbered sections, paragraph breaks) rather than arbitrary token counts, so a policy clause about encryption is never split mid-sentence across two chunks
-- **Reranking** — after retrieval, a dedicated reranking model re-scores the top 20 candidates for true relevance before the final selection is sent to the LLM
+- **Reranking** — after retrieval, a dedicated reranking model re-scores the top 20 candidates for true relevance before the final selection is used for drafting
 
 **Team invites**
 - Owners and admins generate a unique invite link from the Team page — there is no permanent "invite code"
@@ -327,7 +327,7 @@ Greenlight v1 solves the inbound questionnaire problem: a company receives a sec
 The natural expansion is the outbound side — used by GRC analysts and consultants who send questionnaires to their own vendors and need to assess the responses:
 
 - **Vendor portal** — send questionnaires directly to vendors from Greenlight; vendors log in and answer inside the platform rather than via email and Excel attachments
-- **AI-assisted response scoring** — automatically score vendor responses for risk level (High / Medium / Low) based on their answers, with justification
+- **Automated response scoring** — score vendor responses for risk level (High / Medium / Low) based on their answers, with justification
 - **Vendor risk register** — maintain a live register of all third-party vendors, their current risk ratings, assessment due dates, and outstanding gaps
 - **Remediation tracking** — flag gaps in vendor answers and track whether they have been addressed before the next review cycle
 - **Risk rating audit trail** — full record of who scored what, when, and why — defensible in an external audit
