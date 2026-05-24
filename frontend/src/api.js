@@ -53,6 +53,7 @@ export const api = {
 
   // Questionnaires
   getQuestionnaires:    (page = 1)      => get(`/questionnaires?page=${page}&per_page=20`),
+  getClients:           ()              => get('/questionnaires/clients'),
   getQuestionnaire:     (id)            => get(`/questionnaires/${id}`),
   generateAnswers:      (id)            => post(`/questionnaires/${id}/generate`),
   approveQuestion:      (qId, qId2, makeGeneric = false) => post(`/questionnaires/${qId}/questions/${qId2}/approve${makeGeneric ? '?make_generic=true' : ''}`),

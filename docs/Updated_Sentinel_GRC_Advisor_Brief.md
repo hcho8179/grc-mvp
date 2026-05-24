@@ -17,8 +17,14 @@ There are two types of customers, both with the same problem approached differen
 **Type 1 — Companies with an internal security team**
 Series B/C SaaS companies with a dedicated GRC analyst or security engineer in-house. They receive security questionnaires regularly — sometimes 5–10 per month — and the analyst is the bottleneck. They buy Greenlight directly and use it themselves. The CISO or GRC analyst is both the buyer and the day-to-day user.
 
+In this mode, every approved answer goes straight to the organisation's shared memory — there is no client isolation needed because all questionnaires are about the same company. The system gets smarter about that company's security posture automatically with every approval.
+
 **Type 2 — GRC consulting firms**
 Smaller companies (10–100 employees) with no dedicated security person hire a GRC consulting firm to handle questionnaires on their behalf. The consulting firm uses Greenlight across all their clients — one workspace, multiple clients, each fully isolated from one another. The consulting firm is the buyer; their clients are the beneficiaries.
+
+In this mode, each questionnaire is tagged to a specific client. Approved answers build both a per-client memory and a shared generic library — isolating sensitive client-specific answers while still compounding generic policy knowledge across all clients.
+
+**Greenlight asks which mode you are on signup — one question, one click, and the system configures itself accordingly.** Company mode hides all client management fields. Consulting firm mode enables full client isolation and the shared library toggle.
 
 Both types feel the same pain. The difference is who in the chain feels it most directly and who makes the buying decision.
 
@@ -36,6 +42,16 @@ Australian GRC consultants and security teams regularly receive questionnaires b
 - **ISO 27001** — global standard but widely adopted in Australia, especially in financial services and health
 
 A consultant using a US tool starts from zero on every Essential Eight or Privacy Act questionnaire. A consultant using Greenlight starts with 45 pre-loaded Australian-specific Q&A pairs on day one — covering all four frameworks above — plus everything they've approved in past questionnaires compounding on top.
+
+---
+
+## Market Position — Inbound vs Outbound TPRM
+
+Greenlight sits inside the Third-Party Risk Management (TPRM) market, driven by APRA CPS 230 (effective July 2025) which forces every bank and insurer to formally assess their vendors.
+
+TPRM has two sides. **Inbound** — vendors answering questionnaires sent to them — is what Greenlight solves today. Tens of thousands of AU vendors face this problem, the pain is immediate, and no AU-native tool exists. **Outbound** — enterprises sending questionnaires and scoring vendor responses — is the natural future expansion, planned once inbound is proven with paying customers.
+
+Inbound first: there are 5,000 vendors for every 1 bank, the sales cycle is days not months, and the product already exists.
 
 ---
 
@@ -57,12 +73,17 @@ The system processes each document and breaks it into searchable chunks. When a 
 
 ### Step 2 — Upload a questionnaire
 
-The reviewer uploads the customer's questionnaire as an Excel file. Because every company formats these differently, the tool handles this with a two-step column picker:
+Greenlight accepts questionnaires in three formats: **Excel (.xlsx)**, **Word (.docx)**, and **PDF (.pdf)**.
 
+**Excel questionnaires** use a two-step column picker:
 1. **Preview** — the tool shows the first few rows of the file so the reviewer can see what's in each column
 2. **Map columns** — the reviewer clicks to mark which column is the question, which is the Yes/No answer column, and optionally which is the evidence/explanation column
 
-This means the tool works with any Excel layout — it doesn't require a specific template. The reviewer also enters the customer name (e.g. "Atlas Bank") at this step, which powers the client answer isolation described below.
+This works with any Excel layout — no template required. Hidden rows (common in complex enterprise Excel questionnaires) are automatically skipped.
+
+**Word and PDF questionnaires** skip the column picker entirely — the AI reads the document, identifies every question automatically, and presents them for confirmation before import. The reviewer sees the full extracted question list and confirms with one click.
+
+In consulting firm mode, the reviewer also enters the customer name (e.g. "Atlas Bank") at this step, which powers the client answer isolation described below. In company mode, this field does not appear.
 
 ---
 
@@ -156,6 +177,8 @@ A diagnostic page that shows how well the knowledge base is performing — which
 
 **Answer Library**
 A searchable library of all approved answers across every questionnaire. Shows which client each answer is tagged to, allows promoting a client-specific answer to generic, and displays answers that may be stale if the underlying policy was recently updated.
+
+Archiving an answer from the library also removes it from the retrieval index — it will not surface in future answer generation. Rejecting a previously approved answer does the same: both the library entry and the retrieval chunk are cleaned up automatically, so bad answers never persist in the system.
 
 **Trash and restore**
 Deleted questionnaires and documents go to a trash bin rather than being permanently removed. Owners and admins can restore them. Nothing is lost by accident.
@@ -293,7 +316,20 @@ The engine that finds the right policy content for each question uses a multi-la
 - SSO / SAML — single sign-on via Google Workspace, Okta, Azure AD
 - Multi-sheet Excel support — questionnaires that span multiple tabs in the same file
 - @mention and notifications — tag a team member directly in a comment to notify them by email; useful for routing technical questions to the right person without leaving the platform
-- Word and PDF questionnaire upload — not just Excel files
 - Web portal integrations — OneTrust, Vanta, Whistic
 - Australian data sovereignty — all customer data stored exclusively on AWS Sydney region (ap-southeast-2), meeting Australian privacy and data residency requirements out of the box
 - Cloud document sync — connect Google Drive or SharePoint so Greenlight automatically detects when a source policy file is updated and prompts the team to re-embed it
+
+**Long-term vision — outbound third-party risk management**
+
+Greenlight v1 solves the inbound questionnaire problem: a company receives a security questionnaire and needs to answer it fast and accurately. This is the core product today.
+
+The natural expansion is the outbound side — used by GRC analysts and consultants who send questionnaires to their own vendors and need to assess the responses:
+
+- **Vendor portal** — send questionnaires directly to vendors from Greenlight; vendors log in and answer inside the platform rather than via email and Excel attachments
+- **AI-assisted response scoring** — automatically score vendor responses for risk level (High / Medium / Low) based on their answers, with justification
+- **Vendor risk register** — maintain a live register of all third-party vendors, their current risk ratings, assessment due dates, and outstanding gaps
+- **Remediation tracking** — flag gaps in vendor answers and track whether they have been addressed before the next review cycle
+- **Risk rating audit trail** — full record of who scored what, when, and why — defensible in an external audit
+
+This would expand Greenlight from a questionnaire answering tool into a complete third-party cyber risk management platform, covering both sides of the vendor relationship. It is a significant build and sits beyond the current roadmap — but it is the natural direction once the inbound product is established with paying customers.

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useTheme } from '../context/ThemeContext'
@@ -24,17 +24,23 @@ export default function UploadQuestionnaire() {
   const [answerCol, setAnswerCol] = useState(null)
   const [evidenceCol, setEvidenceCol] = useState(null)
   const [result, setResult] = useState(null)
+  const [clients, setClients] = useState([])
+
+  useEffect(() => {
+    if (!isCompany) api.getClients().then(setClients).catch(() => {})
+  }, [])
 
   const handleFile = (f) => {
     if (!f) return
-    if (!f.name.toLowerCase().endsWith('.xlsx')) { setError('Only .xlsx files are supported.'); return }
+    const ext = f.name.toLowerCase().split('.').pop()
+    if (!['xlsx', 'docx', 'pdf'].includes(ext)) { setError('Only XLSX, DOCX, and PDF files are supported.'); return }
     setError(''); setFile(f)
-    if (!name) setName(f.name.replace(/\.xlsx$/i, '').replace(/[_-]/g, ' ').trim())
+    if (!name) setName(f.name.replace(/\.(xlsx|docx|pdf)$/i, '').replace(/[_-]/g, ' ').trim())
   }
 
   const handleStep1 = async (e) => {
     e.preventDefault()
-    if (!file) { setError('Please select an XLSX file.'); return }
+    if (!file) { setError('Please select a file.'); return }
     if (!name.trim()) { setError('Please enter a questionnaire name.'); return }
     setError(''); setUploading(true)
     try {
@@ -53,11 +59,11 @@ export default function UploadQuestionnaire() {
 
   const handleStep2 = async (e) => {
     e.preventDefault()
-    if (questionCol === null) { setError('Please select the question column.'); return }
+    if (!isDocOrPdf && questionCol === null) { setError('Please select the question column.'); return }
     setError(''); setFinalizing(true)
     try {
       const fd = new FormData()
-      fd.append('question_col', questionCol)
+      fd.append('question_col', isDocOrPdf ? 0 : questionCol)
       if (answerCol !== null) fd.append('answer_col', answerCol)
       if (evidenceCol !== null) fd.append('evidence_col', evidenceCol)
       const data = await api.uploadQuestionnaireFinalize(preview.temp_id, fd)
@@ -70,7 +76,8 @@ export default function UploadQuestionnaire() {
   const inputStyle = { ...t.input, color: t.text }
   const inputCls = 'w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all'
 
-  const STEPS = ['Select File', 'Pick Columns', 'Done']
+  const isDocOrPdf = preview?.file_type !== 'xlsx' && preview != null
+  const STEPS = ['Select File', isDocOrPdf ? 'Review Questions' : 'Pick Columns', 'Done']
 
   return (
     <div className="h-full overflow-y-auto">
@@ -85,7 +92,7 @@ export default function UploadQuestionnaire() {
 
         <h1 className="text-2xl font-bold mb-1" style={{ color: t.text }}>Upload Questionnaire</h1>
         <p className="text-sm mb-8" style={{ color: t.text2 }}>
-          Upload an XLSX file and get draft answers for every question.
+          Upload an XLSX, DOCX, or PDF file and get draft answers for every question.
         </p>
 
         {/* Step indicator */}
@@ -131,7 +138,7 @@ export default function UploadQuestionnaire() {
                  onDragOver={e => { e.preventDefault(); setDragging(true) }}
                  onDragLeave={() => setDragging(false)}
                  onDrop={e => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer?.files?.[0]) }}>
-              <input ref={fileRef} type="file" accept=".xlsx" className="hidden"
+              <input ref={fileRef} type="file" accept=".xlsx,.docx,.pdf" className="hidden"
                      onChange={e => handleFile(e.target.files?.[0])} />
               {file ? (
                 <>
@@ -148,8 +155,8 @@ export default function UploadQuestionnaire() {
                        style={{ background: t.dark ? 'rgba(59,130,246,0.1)' : '#eff6ff' }}>
                     <Icon name="upload" size={22} color={t.primary} />
                   </div>
-                  <p className="font-semibold" style={{ color: t.text }}>Drop your XLSX file here</p>
-                  <p className="text-sm mt-1" style={{ color: t.text3 }}>Click to browse · .xlsx only</p>
+                  <p className="font-semibold" style={{ color: t.text }}>Drop your questionnaire file here</p>
+                  <p className="text-sm mt-1" style={{ color: t.text3 }}>Click to browse · XLSX, DOCX, PDF</p>
                 </>
               )}
             </div>
@@ -171,8 +178,12 @@ export default function UploadQuestionnaire() {
                   </label>
                   <input value={customer} onChange={e => setCustomer(e.target.value)}
                          placeholder="Acme Corp" className={inputCls} style={inputStyle}
+                         list="client-suggestions"
                          onFocus={e => e.target.style.boxShadow = `0 0 0 2px ${t.primary}40`}
                          onBlur={e => e.target.style.boxShadow = 'none'} />
+                  <datalist id="client-suggestions">
+                    {clients.map(c => <option key={c} value={c} />)}
+                  </datalist>
                 </div>
               )}
             </div>
@@ -187,7 +198,49 @@ export default function UploadQuestionnaire() {
         )}
 
         {/* Step 2 */}
-        {step === 2 && preview && (
+        {step === 2 && preview && preview.file_type !== 'xlsx' && (
+          <form onSubmit={handleStep2} className="space-y-5">
+            <div className="rounded-xl p-4" style={t.card}>
+              <p className="text-sm font-semibold" style={{ color: t.text }}>{preview.filename}</p>
+              <p className="text-xs mt-0.5" style={{ color: t.text3 }}>
+                {preview.question_count} questions found
+              </p>
+              <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
+                   style={{ background: t.dark ? 'rgba(34,197,94,0.1)' : '#f0fdf4',
+                            border: '1px solid rgba(34,197,94,0.3)', color: '#16a34a' }}>
+                <Icon name="check" size={12} color="#16a34a" /> Questions extracted — review and confirm
+              </div>
+            </div>
+
+            <div className="rounded-xl overflow-hidden" style={t.card}>
+              <div className="px-4 py-2.5" style={{ borderBottom: `1px solid ${t.borderColor}` }}>
+                <p className="text-xs font-semibold" style={{ color: t.text2 }}>Extracted questions (showing first 10)</p>
+              </div>
+              <div className="divide-y" style={{ borderColor: t.borderColor }}>
+                {preview.questions.slice(0, 10).map((q, i) => (
+                  <div key={i} className="px-4 py-3 flex gap-3">
+                    <span className="text-xs font-bold shrink-0 mt-0.5" style={{ color: t.primary }}>{i + 1}</span>
+                    <p className="text-xs leading-relaxed" style={{ color: t.text }}>{q}</p>
+                  </div>
+                ))}
+                {preview.questions.length > 10 && (
+                  <div className="px-4 py-3 text-xs" style={{ color: t.text3 }}>
+                    + {preview.questions.length - 10} more questions
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button type="submit" disabled={finalizing}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold
+                               text-white hover:opacity-90 disabled:opacity-40 transition-all"
+                    style={{ background: t.primary }}>
+              {finalizing ? <><span className="spin inline-block">↻</span> Creating…</> : <>Confirm & create questionnaire <Icon name="chevronR" size={14} color="white" /></>}
+            </button>
+          </form>
+        )}
+
+        {step === 2 && preview && preview.file_type === 'xlsx' && (
           <form onSubmit={handleStep2} className="space-y-5">
             <div className="rounded-xl p-4" style={t.card}>
               <p className="text-sm font-semibold" style={{ color: t.text }}>{preview.filename}</p>

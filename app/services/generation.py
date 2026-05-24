@@ -537,3 +537,27 @@ async def generate_answer(question_text: str, retrieved_chunks: list) -> AnswerR
     result.input_tokens = total_in
     result.output_tokens = total_out
     return result
+
+
+_EXTRACT_QUESTIONS_SYSTEM = """You are extracting questions from a security questionnaire document.
+
+Rules:
+- Return ONLY a JSON array of strings, each string being one question exactly as written.
+- Include every question that requires an answer from the vendor/supplier.
+- Exclude: section headings, instructions, introductory paragraphs, examples, table headers, footnotes.
+- If a row in a table is clearly a question (ends with "?" or is phrased as a request for information), include it.
+- Do not paraphrase or rewrite questions — copy them verbatim.
+- Respond with ONLY the raw JSON array, no markdown, no explanation."""
+
+
+async def extract_questions_from_text(document_text: str) -> list[str]:
+    """Use LLM to extract a list of questions from a Word/PDF questionnaire."""
+    provider = get_llm_provider()
+    # Truncate to avoid token limits — 12000 chars covers most questionnaires
+    truncated = document_text[:12000]
+    user_msg = f"Extract all questions from this document:\n\n{truncated}"
+    raw, _, _ = await provider.generate(_EXTRACT_QUESTIONS_SYSTEM, user_msg)
+    parsed = _parse_json(raw)
+    if isinstance(parsed, list):
+        return [str(q).strip() for q in parsed if str(q).strip()]
+    return []

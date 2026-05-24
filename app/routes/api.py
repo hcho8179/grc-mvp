@@ -46,9 +46,11 @@ from app.services.audit import log_event
 from app.services.chunking import hierarchical_chunks
 from app.services.embeddings import get_embedding_provider
 from app.services.export import export_questionnaire_to_xlsx
-from app.services.generation import generate_answer
+from app.services.generation import generate_answer, extract_questions_from_text
 from app.services.parsing import (
     parse_file,
+    parse_docx,
+    parse_pdf,
     parse_xlsx_questionnaire_full,
     parse_xlsx_questionnaire_preview,
 )
@@ -234,33 +236,75 @@ async def api_questionnaire_upload_preview(
 ):
     file_bytes = await file.read()
     filename = file.filename or "questionnaire.xlsx"
+    ext = Path(filename).suffix.lower()
     if not file_bytes:
         return JSONResponse({"error": "Uploaded file is empty."}, status_code=400)
     if len(file_bytes) > 20 * 1024 * 1024:
         return JSONResponse({"error": "File too large — maximum size is 20 MB."}, status_code=400)
-    if Path(filename).suffix.lower() != ".xlsx":
-        return JSONResponse({"error": "Only XLSX files are supported for questionnaires."}, status_code=400)
+    if ext not in (".xlsx", ".docx", ".pdf"):
+        return JSONResponse({"error": "Only XLSX, DOCX, and PDF files are supported."}, status_code=400)
     if not name.strip():
         return JSONResponse({"error": "Questionnaire name is required."}, status_code=400)
+
+    temp_id = str(uuid.uuid4())
+
+    if ext == ".xlsx":
+        try:
+            preview = parse_xlsx_questionnaire_preview(file_bytes)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        _react_upload_tmp[temp_id] = {
+            "bytes": file_bytes,
+            "filename": filename,
+            "name": name.strip(),
+            "customer_name": customer_name.strip() or None,
+            "workspace_id": current_user.workspace_id,
+            "file_type": "xlsx",
+        }
+        suggested = find_template_by_customer(customer_name.strip() or None, db)
+        return {
+            "temp_id": temp_id,
+            "filename": filename,
+            "file_type": "xlsx",
+            "preview": preview,
+            "suggested_template": {"question_col": suggested.question_col, "answer_col": suggested.answer_col} if suggested else None,
+        }
+
+    # DOCX / PDF — extract text then use LLM to identify questions
     try:
-        preview = parse_xlsx_questionnaire_preview(file_bytes)
+        if ext == ".docx":
+            text = parse_docx(file_bytes)
+        else:
+            text = parse_pdf(file_bytes)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 
-    temp_id = str(uuid.uuid4())
+    if not text.strip():
+        return JSONResponse({"error": "Could not extract any text from this file."}, status_code=400)
+
+    try:
+        questions = await extract_questions_from_text(text)
+    except Exception as exc:
+        return JSONResponse({"error": f"Question extraction failed: {exc}"}, status_code=500)
+
+    if not questions:
+        return JSONResponse({"error": "No questions found in this document. Make sure it is a questionnaire."}, status_code=400)
+
     _react_upload_tmp[temp_id] = {
         "bytes": file_bytes,
         "filename": filename,
         "name": name.strip(),
         "customer_name": customer_name.strip() or None,
         "workspace_id": current_user.workspace_id,
+        "file_type": ext.lstrip("."),
+        "pre_extracted_questions": questions,
     }
-    suggested = find_template_by_customer(customer_name.strip() or None, db)
     return {
         "temp_id": temp_id,
         "filename": filename,
-        "preview": preview,
-        "suggested_template": {"question_col": suggested.question_col, "answer_col": suggested.answer_col} if suggested else None,
+        "file_type": ext.lstrip("."),
+        "questions": questions,
+        "question_count": len(questions),
     }
 
 
@@ -278,14 +322,23 @@ def api_questionnaire_upload_finalize(
         return JSONResponse({"error": "Upload session expired. Please upload again."}, status_code=400)
     if meta.get("workspace_id") != current_user.workspace_id:
         return JSONResponse({"error": "Unauthorized."}, status_code=403)
-    ans_col: int | None = int(answer_col) if answer_col.strip() else None
-    ev_col: int | None = int(evidence_col) if evidence_col.strip() else None
-    try:
-        parsed_questions = parse_xlsx_questionnaire_full(meta["bytes"], question_col, ans_col)
-    except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
-    if not parsed_questions:
-        return JSONResponse({"error": "No questions found in the selected column."}, status_code=400)
+
+    if meta.get("file_type") in ("docx", "pdf"):
+        # Questions already extracted by LLM in the preview step
+        raw_questions = meta.get("pre_extracted_questions", [])
+        if not raw_questions:
+            return JSONResponse({"error": "No questions found. Please upload again."}, status_code=400)
+        parsed_questions = [{"row_index": i, "question": q, "existing_answer": None} for i, q in enumerate(raw_questions)]
+        ans_col = ev_col = None
+    else:
+        ans_col = int(answer_col) if answer_col.strip() else None
+        ev_col = int(evidence_col) if evidence_col.strip() else None
+        try:
+            parsed_questions = parse_xlsx_questionnaire_full(meta["bytes"], question_col, ans_col)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        if not parsed_questions:
+            return JSONResponse({"error": "No questions found in the selected column."}, status_code=400)
 
     from app.services import storage as file_storage
     import uuid
@@ -544,6 +597,27 @@ async def api_knowledge_replace(
 
 
 # ── questionnaires ────────────────────────────────────────────────────────────
+
+@router.get("/questionnaires/clients")
+def api_list_clients(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return distinct non-null customer names used in this workspace, for autocomplete."""
+    rows = (
+        db.query(Questionnaire.customer_name)
+        .filter(
+            Questionnaire.workspace_id == current_user.workspace_id,
+            Questionnaire.customer_name != None,
+            Questionnaire.customer_name != "",
+            Questionnaire.deleted_at == None,
+        )
+        .distinct()
+        .order_by(Questionnaire.customer_name)
+        .all()
+    )
+    return [r.customer_name for r in rows]
+
 
 @router.get("/questionnaires")
 def api_list_questionnaires(
