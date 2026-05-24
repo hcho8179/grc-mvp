@@ -6,6 +6,33 @@ import { useAuth } from '../context/AuthContext'
 import { Icon } from '../components/Layout'
 import { StatusBadge, ConfidenceBadge } from '../components/StatusBadge'
 
+// Returns true if the answer text contains no client-specific signals.
+// Used to auto-detect whether an answer can be promoted to generic.
+function detectIsGeneric(answerText, customerName) {
+  if (!answerText || !customerName) return false
+  const text = answerText.toLowerCase()
+  const client = customerName.toLowerCase().trim()
+
+  // Client name appears in answer
+  if (client.length > 2 && text.includes(client)) return false
+
+  // Specific cloud regions — AWS, Azure, GCP
+  if (/\b(us-east|us-west|eu-west|eu-central|ap-southeast|ap-northeast|ap-south|ca-central|sa-east)-\d\b/.test(text)) return false
+  if (/\b(eastus2?|westus[23]?|westeurope|northeurope|southeastasia|australiaeast|australiasoutheast)\b/.test(text)) return false
+  if (/\b(us-central1|us-east[14]|europe-west\d|asia-east[12]|australia-southeast\d)\b/.test(text)) return false
+
+  // IP addresses / CIDR ranges
+  if (/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d+)?\b/.test(text)) return false
+
+  // Specific URLs
+  if (/https?:\/\//.test(text)) return false
+
+  // Specific headcounts ("50 employees", "200 staff")
+  if (/\b\d+\s*(employees|staff|contractors|personnel|team members|fte|headcount)\b/i.test(answerText)) return false
+
+  return true
+}
+
 // ── Toast ─────────────────────────────────────────────────────────────────
 function Toast({ msg, color, onDone }) {
   useEffect(() => { const t = setTimeout(onDone, 3200); return () => clearTimeout(t) }, [onDone])
@@ -219,12 +246,14 @@ function CommentsPanel({ questionnaireId, questionId, currentUser, t }) {
   )
 }
 
-// ── Assign dropdown ────────────────────────────────────────────────────────
-function AssignDropdown({ q, questionnaireId, teamMembers, currentUser, onAssigned, t }) {
+// ── Flag + note ─────────────────────────────────────────────────────────────
+function FlagNote({ q, questionnaireId, onFlagged, t }) {
   const [open, setOpen] = useState(false)
-  const [assigning, setAssigning] = useState(false)
-  const canAssign = currentUser?.role === 'owner' || currentUser?.role === 'admin'
+  const [note, setNote] = useState(q.flag_note || '')
+  const [saving, setSaving] = useState(false)
   const ref = useRef(null)
+  const inputRef = useRef(null)
+  const isFlagged = !!q.flag_note
 
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
@@ -232,62 +261,67 @@ function AssignDropdown({ q, questionnaireId, teamMembers, currentUser, onAssign
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const assign = async (userId) => {
-    setAssigning(true)
-    setOpen(false)
-    try {
-      const updated = await api.assignQuestion(questionnaireId, q.id, userId)
-      onAssigned(updated)
-    } catch {}
-    setAssigning(false)
-  }
+  useEffect(() => {
+    setNote(q.flag_note || '')
+  }, [q.id, q.flag_note])
 
-  const assigneeName = q.assigned_to_name || q.assigned_to_email
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 50)
+  }, [open])
+
+  const save = async (newNote) => {
+    setSaving(true)
+    try {
+      const updated = await api.flagQuestion(questionnaireId, q.id, newNote || null)
+      onFlagged(updated)
+    } catch {}
+    setSaving(false)
+  }
 
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => canAssign && setOpen(o => !o)}
-        disabled={assigning}
+        onClick={() => setOpen(o => !o)}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
         style={{
-          background: assigneeName
-            ? (t.dark ? 'rgba(59,130,246,0.1)' : '#eff6ff')
-            : (t.dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'),
-          color: assigneeName ? t.primary : t.text3,
-          border: `1px solid ${assigneeName ? `${t.primary}40` : t.borderColor}`,
-          cursor: canAssign ? 'pointer' : 'default',
+          background: isFlagged ? 'rgba(245,158,11,0.1)' : (t.dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'),
+          color: isFlagged ? '#d97706' : t.text3,
+          border: `1px solid ${isFlagged ? 'rgba(245,158,11,0.4)' : t.borderColor}`,
         }}>
-        <Icon name="user" size={11} color={assigneeName ? t.primary : t.text3} />
-        {assigning ? 'Assigning…' : (assigneeName || 'Unassigned')}
-        {canAssign && <span style={{ color: t.text3, fontSize: 9 }}>▾</span>}
+        <span style={{ fontSize: 12 }}>{isFlagged ? '⚑' : '⚐'}</span>
+        {isFlagged ? 'Flagged' : 'Flag'}
       </button>
-      {open && canAssign && (
-        <div className="absolute left-0 top-full mt-1 z-50 rounded-xl overflow-hidden shadow-2xl min-w-[180px]"
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 rounded-xl shadow-2xl p-3 w-64"
              style={{ background: t.surface, border: `1px solid ${t.borderColor}` }}>
-          <button
-            onClick={() => assign(null)}
-            className="w-full text-left px-3 py-2 text-xs transition-colors"
-            style={{ color: t.text3 }}
-            onMouseEnter={e => e.currentTarget.style.background = t.dark ? 'rgba(255,255,255,0.06)' : '#f3f4f6'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            Unassign
-          </button>
-          {teamMembers.map(m => (
+          <p className="text-xs font-semibold mb-2" style={{ color: t.text }}>Add a note (e.g. "asked DevOps via Slack")</p>
+          <textarea
+            ref={inputRef}
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            rows={2}
+            placeholder="What are you waiting on?"
+            className="w-full text-xs rounded-lg px-3 py-2 resize-none outline-none mb-2"
+            style={{ ...t.input }}
+          />
+          <div className="flex gap-2">
             <button
-              key={m.id}
-              onClick={() => assign(m.id)}
-              className="w-full text-left px-3 py-2 text-xs transition-colors"
-              style={{ color: q.assigned_to_id === m.id ? t.primary : t.text,
-                       background: q.assigned_to_id === m.id
-                         ? (t.dark ? 'rgba(59,130,246,0.1)' : '#eff6ff')
-                         : 'transparent' }}
-              onMouseEnter={e => { if (q.assigned_to_id !== m.id) e.currentTarget.style.background = t.dark ? 'rgba(255,255,255,0.06)' : '#f3f4f6' }}
-              onMouseLeave={e => { if (q.assigned_to_id !== m.id) e.currentTarget.style.background = 'transparent' }}>
-              <span className="font-semibold">{m.full_name || m.email}</span>
-              <span className="ml-1" style={{ color: t.text3 }}>· {m.role}</span>
+              onClick={() => { save(note); setOpen(false) }}
+              disabled={saving}
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ background: '#d97706' }}>
+              {saving ? '…' : (isFlagged ? 'Update' : 'Flag')}
             </button>
-          ))}
+            {isFlagged && (
+              <button
+                onClick={() => { save(null); setNote(''); setOpen(false) }}
+                disabled={saving}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-70"
+                style={{ background: t.dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', color: t.text3 }}>
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -361,13 +395,20 @@ function VersionHistoryPanel({ questionnaireId, questionId, t }) {
 }
 
 // ── Question detail panel (right side) ───────────────────────────────────
-function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, onApprove, onReject, onRegen, onAssigned, animClass, t }) {
+function QuestionDetail({ q, qIdx, questionnaireId, customerName, onApprove, onReject, onRegen, onFlagged, animClass, t }) {
+  const { user: currentUser } = useAuth()
+  const isCompany = currentUser?.workspace_type === 'company'
   const [answer, setAnswer] = useState(q.draft_answer || '')
   const [saving, setSaving] = useState(false)
   const [regening, setRegening] = useState(false)
+  const [makeGeneric, setMakeGeneric] = useState(() => isCompany || detectIsGeneric(q.draft_answer || '', customerName))
   const saveTimer = useRef(null)
 
-  useEffect(() => setAnswer(q.draft_answer || ''), [q.id, q.draft_answer])
+  // Re-initialise per question; live `looksGeneric` reacts to answer edits
+  useEffect(() => {
+    setAnswer(q.draft_answer || '')
+    setMakeGeneric(isCompany || detectIsGeneric(q.draft_answer || '', customerName))
+  }, [q.id])
 
   const handleChange = (val) => {
     setAnswer(val)
@@ -406,14 +447,7 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
           )}
           <StatusBadge status={q.status} />
           <div className="ml-auto flex items-center gap-2">
-            <AssignDropdown
-              q={q}
-              questionnaireId={questionnaireId}
-              teamMembers={teamMembers}
-              currentUser={currentUser}
-              onAssigned={onAssigned}
-              t={t}
-            />
+            <FlagNote q={q} questionnaireId={questionnaireId} onFlagged={onFlagged} t={t} />
             {saving && <span className="text-xs" style={{ color: t.text3 }}>Saving…</span>}
           </div>
         </div>
@@ -445,6 +479,15 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
             </span>
           </div>
         )}
+        {q.flag_note && (
+          <div className="mb-3 flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-xs"
+               style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.35)', color: '#92400e' }}>
+            <span className="mt-0.5 flex-shrink-0 text-sm">⚑</span>
+            <span>
+              <span className="font-semibold">Flagged — </span>{q.flag_note}
+            </span>
+          </div>
+        )}
         {q.conflict_warning && (
           <div className="mb-3 flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-xs"
                style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', color: '#92400e' }}>
@@ -452,18 +495,6 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
             <span>
               <span className="font-semibold">Conflicts with a previously approved answer.</span>
               {' '}{q.conflict_warning}
-            </span>
-          </div>
-        )}
-        {q.has_starter_sources && (
-          <div className="mb-3 flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-xs"
-               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', color: '#92400e' }}>
-            <span className="mt-0.5 flex-shrink-0 text-sm">⚠</span>
-            <span>
-              <span className="font-semibold">Based on starter templates, not your real policies.</span>
-              {' '}Verify this answer before approving, or{' '}
-              <a href="/knowledge/upload" className="underline font-semibold hover:opacity-70">upload your own policies</a>
-              {' '}to get accurate, company-specific answers.
             </span>
           </div>
         )}
@@ -491,10 +522,27 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
 
       {/* Action bar */}
       {canAct && (
-        <div className="px-8 py-4 flex items-center gap-3 flex-shrink-0"
+        <div className="px-8 py-4 flex-shrink-0"
              style={{ borderTop: `1px solid ${t.borderColor}`,
                       background: t.dark ? 'rgba(255,255,255,0.02)' : t.surfaceHover }}>
-          <button onClick={() => onApprove(q.id)}
+          {/* Generic prompt — hidden in company mode (always generic) and when answer looks client-specific */}
+          {!isCompany && customerName && detectIsGeneric(answer, customerName) && (
+            <label className="flex items-center gap-2 mb-3 cursor-pointer w-fit group">
+              <input
+                type="checkbox"
+                checked={makeGeneric}
+                onChange={e => setMakeGeneric(e.target.checked)}
+                className="w-3.5 h-3.5 rounded accent-indigo-500 cursor-pointer"
+              />
+              <span className="text-xs" style={{ color: t.text3 }}>
+                Looks generic — save for{' '}
+                <strong style={{ color: t.text2 }}>all clients</strong>
+                , not just <span style={{ color: '#6366f1' }}>{customerName}</span>?
+              </span>
+            </label>
+          )}
+          <div className="flex items-center gap-3">
+          <button onClick={() => { onApprove(q.id, isCompany || (detectIsGeneric(answer, customerName) && makeGeneric)); setMakeGeneric(isCompany) }}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold
                              text-white hover:opacity-90 active:scale-95 transition-all"
                   style={{ background: '#16a34a' }}>
@@ -521,6 +569,7 @@ function QuestionDetail({ q, qIdx, questionnaireId, teamMembers, currentUser, on
             <span className={regening ? 'spin inline-block text-base leading-none' : ''}>↻</span>
             {regening ? 'Re-drafting…' : 'Re-draft'} {!regening && <kbd className="kbd ml-1">R</kbd>}
           </button>
+          </div>
         </div>
       )}
 
@@ -564,7 +613,6 @@ export default function QuestionnaireDetail() {
   const [currentId, setCurrentId] = useState(null)
   const [animMap, setAnimMap] = useState({})
   const [toast, setToast] = useState(null)
-  const [teamMembers, setTeamMembers] = useState([])
   const [shareLink, setShareLink] = useState(null)
   const [shareCopied, setShareCopied] = useState(false)
   const initializedRef = useRef(false)
@@ -586,17 +634,11 @@ export default function QuestionnaireDetail() {
 
   useEffect(load, [load])
 
-  // Fetch team members once so assignment dropdown is populated
-  useEffect(() => {
-    api.getTeam().then(setTeamMembers).catch(() => {})
-  }, [])
-
   const qs        = data?.questionnaire
   const questions = data?.questions || []
   const toReview  = questions.filter(q => q.status === 'pending' || q.status === 'generated')
   const approved  = questions.filter(q => q.status === 'approved')
   const rejected  = questions.filter(q => q.status === 'rejected')
-  const highConf  = questions.filter(q => q.status === 'generated' && q.confidence === 'high')
   const pct       = questions.length ? Math.round(((approved.length + rejected.length) / questions.length) * 100) : 0
   const current   = questions.find(q => q.id === currentId)
 
@@ -613,12 +655,12 @@ export default function QuestionnaireDetail() {
     if (next) setTimeout(() => setCurrentId(next.id), 260)
   }, [toReview, currentId])
 
-  const handleApprove = useCallback(async (qId) => {
+  const handleApprove = useCallback(async (qId, makeGeneric = false) => {
     flash(qId, 'approve-flash')
     try {
-      const updated = await api.approveQuestion(id, qId)
+      const updated = await api.approveQuestion(id, qId, makeGeneric)
       setData(p => ({ ...p, questions: p.questions.map(q => q.id === qId ? updated : q) }))
-      showToast('Answer approved', 'green')
+      showToast(makeGeneric ? 'Approved as generic answer' : 'Answer approved', 'green')
       advanceNext()
     } catch { showToast('Failed to approve', 'red') }
   }, [id, advanceNext])
@@ -681,18 +723,9 @@ export default function QuestionnaireDetail() {
     } catch { showToast('Regeneration failed', 'red') }
   }, [id])
 
-  const handleAssigned = useCallback((updated) => {
+  const handleFlagged = useCallback((updated) => {
     setData(p => ({ ...p, questions: p.questions.map(q => q.id === updated.id ? updated : q) }))
   }, [])
-
-  const handleBulkApprove = async () => {
-    if (!highConf.length || !confirm(`Approve all ${highConf.length} high-confidence answers?`)) return
-    try {
-      const res = await api.bulkApproveHigh(id)
-      await load()
-      showToast(`Approved ${res.approved} answers`, 'green')
-    } catch { showToast('Bulk approve failed', 'red') }
-  }
 
   // Initialise share link if already generated
   useEffect(() => {
@@ -747,7 +780,7 @@ export default function QuestionnaireDetail() {
   )
 
   return (
-    <div className="flex overflow-hidden" style={{ height: '100vh', background: t.bg }}>
+    <div className="flex overflow-hidden h-full" style={{ background: t.bg }}>
 
       {/* ── Left panel: navigation ───────────────────────────────────── */}
       <aside className="w-[256px] shrink-0 flex flex-col overflow-hidden"
@@ -809,10 +842,12 @@ export default function QuestionnaireDetail() {
             const isActive = q.id === currentId
             const noKb = q.no_kb_context
             const hasConflict = !!q.conflict_warning
+            const isFlagged = !!q.flag_note
             const dot = q.status === 'approved' ? '#22c55e'
                       : q.status === 'rejected'  ? '#ef4444'
                       : noKb                      ? '#ef4444'
                       : hasConflict               ? '#d97706'
+                      : isFlagged                 ? '#d97706'
                       : q.status === 'generated' ? t.primary
                       : t.text3
             return (
@@ -821,11 +856,11 @@ export default function QuestionnaireDetail() {
                       style={{
                         background: isActive
                           ? (t.dark ? 'rgba(59,130,246,0.12)' : 'rgba(37,99,235,0.08)')
-                          : 'transparent',
-                        border: `1px solid ${isActive ? `${t.primary}40` : 'transparent'}`,
+                          : isFlagged ? 'rgba(245,158,11,0.05)' : 'transparent',
+                        border: `1px solid ${isActive ? `${t.primary}40` : isFlagged ? 'rgba(245,158,11,0.25)' : 'transparent'}`,
                       }}
                       onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = t.dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
-                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
+                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = isFlagged ? 'rgba(245,158,11,0.05)' : 'transparent' }}>
                 <div className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: dot }} />
                   <span className="text-xs font-semibold" style={{ color: isActive ? t.primary : t.text }}>
@@ -841,12 +876,14 @@ export default function QuestionnaireDetail() {
                           style={{ background: 'rgba(245,158,11,0.1)', color: '#b45309', border: '1px solid rgba(245,158,11,0.3)' }}>
                       CONFLICT
                     </span>
+                  ) : isFlagged ? (
+                    <span className="ml-auto" style={{ color: '#d97706', fontSize: 11 }} title={q.flag_note}>⚑</span>
                   ) : q.confidence === 'high' && q.status === 'generated' && (
                     <span className="ml-auto text-[10px] font-semibold" style={{ color: '#22c55e' }}>H</span>
                   )}
                 </div>
                 <p className="text-[11px] mt-0.5 leading-snug line-clamp-2"
-                   style={{ color: isActive ? t.text2 : t.text2 }}>
+                   style={{ color: t.text2 }}>
                   {q.question_text.substring(0, 60)}{q.question_text.length > 60 ? '…' : ''}
                 </p>
               </button>
@@ -950,12 +987,11 @@ export default function QuestionnaireDetail() {
               q={current}
               qIdx={questions.indexOf(current)}
               questionnaireId={id}
-              teamMembers={teamMembers}
-              currentUser={currentUser}
+              customerName={qs?.customer_name}
               onApprove={handleApprove}
               onReject={handleReject}
               onRegen={handleRegenerate}
-              onAssigned={handleAssigned}
+              onFlagged={handleFlagged}
               animClass={animMap[current.id]}
               t={t}
             />

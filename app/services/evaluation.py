@@ -39,7 +39,7 @@ class EvalReport:
 
 
 async def evaluate_retrieval(
-    org_id: int,
+    workspace_id: int,
     db: Session,
     top_k: int = 8,
     sample_size: int = 50,
@@ -59,7 +59,7 @@ async def evaluate_retrieval(
         db.query(Question)
         .join(Questionnaire, Question.questionnaire_id == Questionnaire.id)
         .filter(
-            Questionnaire.org_id == org_id,
+            Questionnaire.workspace_id == workspace_id,
             Question.status == QuestionStatus.approved,
             Question.cited_chunk_ids.isnot(None),
             Question.question_text.isnot(None),
@@ -120,7 +120,7 @@ async def evaluate_retrieval(
 
         try:
             results = await retrieve_relevant_chunks(
-                q.question_text, db, top_k=top_k, org_id=org_id
+                q.question_text, db, top_k=top_k, workspace_id=workspace_id
             )
         except Exception as exc:
             report.warnings.append(f"Retrieval failed for q.id={q.id}: {exc}")

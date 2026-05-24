@@ -14,11 +14,11 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_knowledge_chunks_fts
+        CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_fts
         ON knowledge_chunks
         USING gin(to_tsvector('english', text))
     """)
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX CONCURRENTLY IF EXISTS ix_knowledge_chunks_fts")
+    op.execute("DROP INDEX IF EXISTS ix_knowledge_chunks_fts")

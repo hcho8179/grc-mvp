@@ -2,10 +2,13 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useTheme } from '../context/ThemeContext'
+import { useAuth } from '../context/AuthContext'
 import { Icon } from '../components/Layout'
 
 export default function UploadQuestionnaire() {
   const { t } = useTheme()
+  const { user } = useAuth()
+  const isCompany = user?.workspace_type === 'company'
   const nav = useNavigate()
   const fileRef = useRef()
   const [step, setStep] = useState(1)
@@ -36,7 +39,7 @@ export default function UploadQuestionnaire() {
     setError(''); setUploading(true)
     try {
       const fd = new FormData()
-      fd.append('file', file); fd.append('name', name.trim()); fd.append('customer_name', customer.trim())
+      fd.append('file', file); fd.append('name', name.trim()); fd.append('customer_name', isCompany ? '' : customer.trim())
       const data = await api.uploadQuestionnairePrev(fd)
       setPreview(data)
       if (data.suggested_template) {
@@ -151,7 +154,7 @@ export default function UploadQuestionnaire() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className={`grid gap-4 ${isCompany ? 'grid-cols-1' : 'grid-cols-2'}`}>
               <div>
                 <label className="block text-xs font-semibold mb-1.5" style={{ color: t.text2 }}>
                   Questionnaire name <span className="text-red-500">*</span>
@@ -161,15 +164,17 @@ export default function UploadQuestionnaire() {
                        onFocus={e => e.target.style.boxShadow = `0 0 0 2px ${t.primary}40`}
                        onBlur={e => e.target.style.boxShadow = 'none'} />
               </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: t.text2 }}>
-                  Customer / Vendor <span className="text-xs font-normal" style={{ color: t.text3 }}>(optional)</span>
-                </label>
-                <input value={customer} onChange={e => setCustomer(e.target.value)}
-                       placeholder="Acme Corp" className={inputCls} style={inputStyle}
-                       onFocus={e => e.target.style.boxShadow = `0 0 0 2px ${t.primary}40`}
-                       onBlur={e => e.target.style.boxShadow = 'none'} />
-              </div>
+              {!isCompany && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: t.text2 }}>
+                    Customer / Vendor <span className="text-xs font-normal" style={{ color: t.text3 }}>(optional)</span>
+                  </label>
+                  <input value={customer} onChange={e => setCustomer(e.target.value)}
+                         placeholder="Acme Corp" className={inputCls} style={inputStyle}
+                         onFocus={e => e.target.style.boxShadow = `0 0 0 2px ${t.primary}40`}
+                         onBlur={e => e.target.style.boxShadow = 'none'} />
+                </div>
+              )}
             </div>
 
             <button type="submit" disabled={uploading || !file}

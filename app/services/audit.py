@@ -8,7 +8,7 @@ from app.models import AuditLog
 def log_event(
     db: Session,
     *,
-    org_id: int,
+    workspace_id: int,
     user_id: int | None,
     user_email: str | None,
     action: str,
@@ -17,7 +17,7 @@ def log_event(
     detail: dict | None = None,
 ) -> None:
     db.add(AuditLog(
-        org_id=org_id,
+        workspace_id=workspace_id,
         user_id=user_id,
         user_email=user_email,
         action=action,

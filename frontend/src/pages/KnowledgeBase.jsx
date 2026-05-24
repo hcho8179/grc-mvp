@@ -34,7 +34,7 @@ export default function KnowledgeBase() {
     setLoading(true)
     api.getKnowledge(p)
       .then(data => {
-        setDocs([...data.items].sort((a, b) => a.is_starter - b.is_starter))
+        setDocs(data.items)
         setMeta({ total: data.total, pages: data.pages })
       })
       .catch(console.error)
@@ -82,27 +82,6 @@ export default function KnowledgeBase() {
           </button>
         </div>
 
-        {/* Banner shown when user only has starter templates — prompt to upload real policies */}
-        {!loading && docs.length > 0 && docs.every(d => d.is_starter) && (
-          <div className="mb-6 flex items-start gap-3 rounded-xl px-5 py-4"
-               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
-            <span className="text-xl flex-shrink-0 mt-0.5">⚠</span>
-            <div>
-              <p className="font-semibold text-sm mb-0.5" style={{ color: '#92400e' }}>
-                You're running on starter templates
-              </p>
-              <p className="text-xs mb-3" style={{ color: '#b45309' }}>
-                Your answers are based on generic policy templates, not your company's actual policies.
-                Upload your real security policies to get accurate, company-specific answers.
-              </p>
-              <button onClick={() => nav('/knowledge/upload')}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white hover:opacity-90"
-                      style={{ background: '#d97706' }}>
-                <Icon name="upload" size={12} color="white" /> Upload Your Policies
-              </button>
-            </div>
-          </div>
-        )}
 
         {loading ? (
           <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-14 rounded-xl" />)}</div>
@@ -136,7 +115,7 @@ export default function KnowledgeBase() {
                 <tbody>
                   {docs.map(d => {
                     const fc    = FILE_COLOR[d.file_type] || FILE_COLOR.pdf
-                    const stale = d.is_starter ? null : staleness(d.content_updated_at)
+                    const stale = staleness(d.content_updated_at)
                     return (
                       <tr key={d.id} className="transition-colors"
                           style={{ borderBottom: `1px solid ${t.borderColor}` }}
@@ -150,7 +129,7 @@ export default function KnowledgeBase() {
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="font-medium" style={{ color: t.text }}>
-                                {d.is_starter ? d.filename.replace('[Starter] ', '').replace('.txt', '') : d.filename}
+                                {d.filename}
                               </span>
                               {stale && (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold cursor-default"
@@ -163,17 +142,10 @@ export default function KnowledgeBase() {
                           </div>
                         </td>
                         <td className="px-5 py-4">
-                          {d.is_starter ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold"
-                                  style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.25)', color: '#8b5cf6' }}>
-                              Starter
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase"
-                                  style={{ background: fc.bg, border: `1px solid ${fc.border}`, color: fc.text }}>
-                              {d.file_type}
-                            </span>
-                          )}
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase"
+                                style={{ background: fc.bg, border: `1px solid ${fc.border}`, color: fc.text }}>
+                            {d.file_type}
+                          </span>
                         </td>
                         <td className="px-5 py-4">
                           <span className="font-semibold tabular-nums" style={{ color: t.text }}>
@@ -185,7 +157,7 @@ export default function KnowledgeBase() {
                           {new Date(d.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </td>
                         <td className="px-5 py-4">
-                          {canManage && !d.is_starter && (
+                          {canManage && (
                             <div className="flex items-center justify-end gap-3">
                               {/* Replace: hidden file input triggered by label */}
                               <label className="cursor-pointer text-xs font-medium transition-colors hover:opacity-70"

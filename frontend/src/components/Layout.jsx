@@ -48,18 +48,17 @@ export function Icon({ name, size = 16, color = 'currentColor' }) {
 const NAV_SECTIONS = [
   {
     items: [
-      { to: '/',                        label: 'Dashboard',      icon: 'chart',     exact: true },
+      { to: '/', label: 'Dashboard', icon: 'chart', exact: true },
     ]
   },
   {
     label: 'Work',
     items: [
-      { to: '/questionnaires',          label: 'Questionnaires', icon: 'clipboard', match: (p) => p.startsWith('/questionnaires') && p !== '/questionnaires/templates' },
-      { to: '/assignments',             label: 'My Assignments', icon: 'inbox',     match: (p) => p === '/assignments' },
-      { to: '/knowledge',               label: 'Knowledge Base', icon: 'book',      match: (p) => p.startsWith('/knowledge') && p !== '/knowledge/health' },
-      { to: '/knowledge/health',        label: 'KB Health',      icon: 'chart',     match: (p) => p === '/knowledge/health' },
-      { to: '/answers/library',         label: 'Answer Library', icon: 'archive',   match: (p) => p.startsWith('/answers') },
-      { to: '/questionnaires/templates',label: 'Templates',      icon: 'grid',      match: (p) => p === '/questionnaires/templates' },
+      { to: '/questionnaires',           label: 'Questionnaires', icon: 'clipboard', match: (p) => p.startsWith('/questionnaires') && p !== '/questionnaires/templates' },
+      { to: '/knowledge',                label: 'Knowledge Base',  icon: 'book',     match: (p) => p.startsWith('/knowledge') && p !== '/knowledge/health' },
+      { to: '/knowledge/health',         label: 'KB Health',       icon: 'chart',    match: (p) => p === '/knowledge/health' },
+      { to: '/answers/library',          label: 'Answer Library',  icon: 'archive',  match: (p) => p.startsWith('/answers') },
+      { to: '/questionnaires/templates', label: 'Templates',       icon: 'grid',     match: (p) => p === '/questionnaires/templates' },
     ]
   },
   {
@@ -69,12 +68,12 @@ const NAV_SECTIONS = [
     ]
   },
   {
-    label: 'Analytics',
+    label: 'Admin',
     adminOnly: true,
     items: [
-      { to: '/admin/audit',             label: 'Audit Log',      icon: 'clock',     match: (p) => p === '/admin/audit' },
-      { to: '/trash',                   label: 'Trash',          icon: 'doc',       match: (p) => p === '/trash',        adminOnly: true },
-      { to: '/admin/team',              label: 'Team',           icon: 'user',      match: (p) => p === '/admin/team'  },
+      { to: '/admin/audit', label: 'Audit Log',  icon: 'clock', match: (p) => p === '/admin/audit' },
+      { to: '/trash',       label: 'Trash',      icon: 'doc',   match: (p) => p === '/trash', adminOnly: true },
+      { to: '/admin/team',  label: 'Team',       icon: 'user',  match: (p) => p === '/admin/team' },
     ]
   },
 ]
@@ -104,7 +103,6 @@ export default function Layout() {
   const { user, logout } = useAuth()
   const nav = useNavigate()
   const { t, toggle } = useTheme()
-  const [showInvite, setShowInvite] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [unread, setUnread] = useState(0)
   const [showNotifs, setShowNotifs] = useState(false)
@@ -181,7 +179,10 @@ export default function Layout() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
-          {NAV_SECTIONS.filter(s => !s.adminOnly || user?.role === 'owner' || user?.role === 'admin').map((section, si) => (
+          {NAV_SECTIONS.filter(s => {
+            if (s.adminOnly && user?.role !== 'owner' && user?.role !== 'admin') return false
+            return true
+          }).map((section, si) => (
             <div key={si}>
               {section.label && (
                 <p className="text-[10px] font-semibold uppercase tracking-widest px-3 mb-1.5"
@@ -190,9 +191,11 @@ export default function Layout() {
                 </p>
               )}
               <div className="space-y-0.5">
-                {section.items.map(item => (
-                  <NavItem key={item.to} item={item} pathname={pathname} t={t} />
-                ))}
+                {section.items
+                  .filter(item => !(item.adminOnly && user?.role !== 'owner' && user?.role !== 'admin'))
+                  .map(item => (
+                    <NavItem key={item.to} item={item} pathname={pathname} t={t} />
+                  ))}
               </div>
             </div>
           ))}
@@ -268,28 +271,6 @@ export default function Layout() {
           )}
         </div>
 
-        {/* Bottom: invite code */}
-        <div className="px-3 py-3" style={{ borderTop: `1px solid ${t.sidebarBorder}` }}>
-          <button
-            onClick={() => setShowInvite(s => !s)}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all"
-            style={{ color: t.text3 }}
-            onMouseEnter={e => e.currentTarget.style.background = t.dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <Icon name="user" size={14} color={t.text3} />
-            Invite teammates
-          </button>
-          {showInvite && (
-            <div className="mt-2 px-3 py-2.5 rounded-lg text-xs fade-in"
-                 style={{ background: t.dark ? 'rgba(255,255,255,0.04)' : '#f8fafc', border: `1px solid ${t.borderColor}` }}>
-              <p className="font-semibold mb-1" style={{ color: t.text2 }}>Invite code</p>
-              <code className="font-mono font-bold" style={{ color: t.primary }}>
-                {user?.org_slug || '—'}
-              </code>
-            </div>
-          )}
-        </div>
-
         {/* Bottom: user + theme toggle */}
         <div className="px-3 pb-4 space-y-1" style={{ borderTop: `1px solid ${t.sidebarBorder}`, paddingTop: '12px' }}>
 
@@ -325,7 +306,7 @@ export default function Layout() {
                 </span>
               </div>
               <p className="text-[10px] truncate" style={{ color: t.text3 }}>
-                {user?.org_name}
+                {user?.workspace_name}
               </p>
             </div>
             <button onClick={handleLogout} title="Sign out"

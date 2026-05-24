@@ -4,13 +4,10 @@ Jobs are rows in `job_queue`. The worker loop runs inside the web process
 and polls every 10 seconds. If the server restarts, pending jobs are picked
 up on next boot — nothing is lost.
 
-Adding a job:
-    enqueue("seed_starter_policies", {"org_id": 123})
-
 Supported job types:
-    seed_starter_policies   — seed 20 policy templates for a new org
     send_verification_email — send email verification link
-    send_password_reset     — send password reset link (future)
+    send_password_reset     — send password reset link
+    send_restore_notification — notify owner when item restored from trash
 """
 
 from __future__ import annotations
@@ -40,11 +37,7 @@ def enqueue(job_type: str, payload: dict) -> None:
 
 async def _run_job(job: JobQueue) -> None:
     """Dispatch a single job to the correct handler."""
-    if job.job_type == "seed_starter_policies":
-        from app.services.starter_pack import seed_starter_policies
-        await seed_starter_policies(job.payload["org_id"])
-
-    elif job.job_type == "send_verification_email":
+    if job.job_type == "send_verification_email":
         from app.services.email import send_verification_email
         send_verification_email(
             job.payload["email"],
@@ -99,6 +92,7 @@ async def worker_loop() -> None:
             job.status   = JobStatus.running
             job.attempts += 1
             db.commit()
+            db.refresh(job)  # reload attributes before session closes — prevents DetachedInstanceError
 
         except Exception:
             db.rollback()

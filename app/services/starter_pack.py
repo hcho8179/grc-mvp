@@ -792,7 +792,7 @@ SOC 2 CC1.3 | ISO 27001 A.8.1 | Company Code of Conduct
 ]
 
 
-async def seed_starter_policies(org_id: int) -> None:
+async def seed_starter_policies(workspace_id: int) -> None:
     """Embed and store all starter policies for a new org. Runs as a background task."""
     from app.db import SessionLocal
     from app.models import Document, FileType, KnowledgeChunk, SourceType
@@ -812,7 +812,7 @@ async def seed_starter_policies(org_id: int) -> None:
                 filename=policy["filename"],
                 file_type=FileType.pdf,
                 chunk_count=len(chunks),
-                org_id=org_id,
+                workspace_id=workspace_id,
                 is_starter=True,
             )
             db.add(doc)
@@ -829,9 +829,9 @@ async def seed_starter_policies(org_id: int) -> None:
                 ))
 
         db.commit()
-        print(f"[starter_pack] Seeded {len(STARTER_POLICIES)} policies for org {org_id}")
+        print(f"[starter_pack] Seeded {len(STARTER_POLICIES)} policies for org {workspace_id}")
     except Exception as exc:
         db.rollback()
-        print(f"[starter_pack] Seeding failed for org {org_id}: {exc}")
+        print(f"[starter_pack] Seeding failed for org {workspace_id}: {exc}")
     finally:
         db.close()

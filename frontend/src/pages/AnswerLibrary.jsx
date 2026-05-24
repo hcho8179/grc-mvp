@@ -1,16 +1,21 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
+import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { Icon } from '../components/Layout'
 
 export default function AnswerLibrary() {
   const { t } = useTheme()
+  const { user } = useAuth()
   const [data, setData] = useState({ answers: [], categories: [], total: 0, total_reuses: 0 })
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [archiving, setArchiving] = useState(null)
   const [confirmArchive, setConfirmArchive] = useState(null)
+  const [markingFresh, setMarkingFresh] = useState(null)
+  const [makingGeneric, setMakingGeneric] = useState(null)
+  const [staleOnly, setStaleOnly] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -18,6 +23,24 @@ export default function AnswerLibrary() {
   }
 
   useEffect(() => { load() }, [search, category])
+
+  const handleMarkFresh = async (answer) => {
+    setMarkingFresh(answer.id)
+    try {
+      await api.markAnswerFresh(answer.id)
+      setData(prev => ({ ...prev, answers: prev.answers.map(a => a.id === answer.id ? { ...a, is_stale: false } : a) }))
+    } catch {}
+    setMarkingFresh(null)
+  }
+
+  const handleMakeGeneric = async (answer) => {
+    setMakingGeneric(answer.id)
+    try {
+      await api.makeAnswerGeneric(answer.id)
+      setData(prev => ({ ...prev, answers: prev.answers.map(a => a.id === answer.id ? { ...a, customer_name: null } : a) }))
+    } catch {}
+    setMakingGeneric(null)
+  }
 
   const handleArchive = async (answer) => {
     setArchiving(answer.id)
@@ -65,6 +88,22 @@ export default function AnswerLibrary() {
           )}
         </div>
 
+        {/* Stale filter */}
+        {data.answers.some(a => a.is_stale) && (
+          <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-xl text-xs"
+               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
+            <span style={{ color: '#d97706' }}>⚠</span>
+            <span className="font-medium" style={{ color: '#92400e' }}>
+              {data.answers.filter(a => a.is_stale).length} answer{data.answers.filter(a => a.is_stale).length !== 1 ? 's' : ''} may be outdated — a source document was updated or deleted.
+            </span>
+            <button onClick={() => setStaleOnly(s => !s)}
+                    className="ml-auto px-2.5 py-1 rounded-lg font-semibold transition-all"
+                    style={{ background: staleOnly ? '#d97706' : 'rgba(245,158,11,0.15)', color: staleOnly ? 'white' : '#d97706' }}>
+              {staleOnly ? 'Show all' : 'Show stale only'}
+            </button>
+          </div>
+        )}
+
         {/* Category filters */}
         {data.categories.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-6">
@@ -107,12 +146,26 @@ export default function AnswerLibrary() {
                 </tr>
               </thead>
               <tbody>
-                {data.answers.map(a => (
+                {data.answers.filter(a => !staleOnly || a.is_stale).map(a => (
                   <tr key={a.id} className="align-top transition-colors"
                       style={{ borderBottom: `1px solid ${t.borderColor}` }}
                       onMouseEnter={e => e.currentTarget.style.background = t.surfaceHover}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <td className="px-5 py-4 max-w-[200px]">
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {a.is_stale && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                                style={{ background: 'rgba(245,158,11,0.12)', color: '#d97706', border: '1px solid rgba(245,158,11,0.35)' }}>
+                            ⚠ Stale
+                          </span>
+                        )}
+                        {a.customer_name && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                                style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
+                            {a.customer_name}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs font-medium leading-relaxed line-clamp-3" style={{ color: t.text }}>{a.question_text}</p>
                     </td>
                     <td className="px-5 py-4 max-w-[280px]">
@@ -152,14 +205,36 @@ export default function AnswerLibrary() {
                       {new Date(a.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                     </td>
                     <td className="px-5 py-4">
-                      <button
-                        onClick={() => setConfirmArchive(a)}
-                        disabled={archiving === a.id}
-                        title="Remove from library"
-                        className="p-1.5 rounded-lg transition-all hover:opacity-80 disabled:opacity-30"
-                        style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
-                        <Icon name="trash" size={13} color="#ef4444" />
-                      </button>
+                      <div className="flex flex-col gap-1">
+                        {a.is_stale && (
+                          <button
+                            onClick={() => handleMarkFresh(a)}
+                            disabled={markingFresh === a.id}
+                            title="Mark as reviewed — answer is still accurate"
+                            className="px-2 py-1 rounded-lg text-[10px] font-semibold transition-all hover:opacity-80 disabled:opacity-30"
+                            style={{ background: 'rgba(245,158,11,0.1)', color: '#d97706', border: '1px solid rgba(245,158,11,0.35)' }}>
+                            {markingFresh === a.id ? '…' : '✓ Still valid'}
+                          </button>
+                        )}
+                        {a.customer_name && (
+                          <button
+                            onClick={() => handleMakeGeneric(a)}
+                            disabled={makingGeneric === a.id}
+                            title="Share this answer across all clients"
+                            className="px-2 py-1 rounded-lg text-[10px] font-semibold transition-all hover:opacity-80 disabled:opacity-30"
+                            style={{ background: 'rgba(99,102,241,0.08)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
+                            {makingGeneric === a.id ? '…' : '⊕ Make generic'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setConfirmArchive(a)}
+                          disabled={archiving === a.id}
+                          title="Remove from library"
+                          className="p-1.5 rounded-lg transition-all hover:opacity-80 disabled:opacity-30 self-start"
+                          style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
+                          <Icon name="trash" size={13} color="#ef4444" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

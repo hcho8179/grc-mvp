@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -22,7 +23,8 @@ function RoleBadge({ role }) {
 
 export default function Team() {
   const { t } = useTheme()
-  const { user: me, login } = useAuth()
+  const { user: me, refreshUser } = useAuth()
+  const nav = useNavigate()
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [changing, setChanging] = useState(null)
@@ -38,20 +40,22 @@ export default function Team() {
 
   const canInvite = me?.role === 'owner' || me?.role === 'admin'
 
-  // Org settings
+  // Workspace settings
   const [whiteLabelExport, setWhiteLabelExport] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
 
   useEffect(() => {
     if (me?.role === 'owner') {
-      api.getOrgSettings().then(d => setWhiteLabelExport(d.white_label_export)).catch(() => {})
+      api.getWorkspaceSettings().then(d => {
+        setWhiteLabelExport(d.white_label_export)
+      }).catch(() => {})
     }
   }, [me?.role])
 
   const handleToggleWhiteLabel = async (val) => {
     setWhiteLabelExport(val)
     setSavingSettings(true)
-    try { await api.updateOrgSettings({ white_label_export: val }) } catch {}
+    try { await api.updateWorkspaceSettings({ white_label_export: val }) } catch {}
     setSavingSettings(false)
   }
 
@@ -204,8 +208,10 @@ export default function Team() {
         {/* Workspace settings — owner only */}
         {isOwner && (
           <div className="rounded-xl p-5 mb-6" style={t.card}>
-            <p className="text-xs font-semibold mb-1" style={{ color: t.text3 }}>Workspace settings</p>
-            <div className="flex items-center justify-between mt-3">
+            <p className="text-xs font-semibold mb-3" style={{ color: t.text3 }}>Workspace settings</p>
+
+            {/* White-label toggle */}
+            <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm font-semibold" style={{ color: t.text }}>White-label exports</p>
                 <p className="text-xs mt-0.5" style={{ color: t.text3 }}>
@@ -217,10 +223,8 @@ export default function Team() {
                 disabled={savingSettings}
                 className="relative flex-shrink-0 w-10 h-6 rounded-full transition-colors duration-200 disabled:opacity-50"
                 style={{ background: whiteLabelExport ? t.primary : (t.dark ? 'rgba(255,255,255,0.12)' : '#d1d5db') }}>
-                <span
-                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200"
-                  style={{ transform: whiteLabelExport ? 'translateX(16px)' : 'translateX(0)' }}
-                />
+                <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200"
+                      style={{ transform: whiteLabelExport ? 'translateX(16px)' : 'translateX(0)' }} />
               </button>
             </div>
           </div>

@@ -42,7 +42,6 @@ _BOOST: dict[str, float] = {
     SourceType.approved_answer: 1.35,
     SourceType.policy:          1.00,
 }
-_STARTER_PENALTY   = 0.75
 _RRF_K             = 60
 _DEDUP_THRESHOLD   = 0.92
 _FEEDBACK_SCALE    = 0.15   # ±15 % max per unit of tanh(net/3)
@@ -57,13 +56,14 @@ async def retrieve_relevant_chunks(
     question_text: str,
     db: Session,
     top_k: int = 8,
-    org_id: int | None = None,
+    workspace_id: int | None = None,
+    customer_name: str | None = None,
 ) -> list[RetrievalResult]:
     """Full 7-layer RAG pipeline. Falls back gracefully at every stage."""
 
     # Layers 1-2: HyDE + expansion + multi-vector dense (parallel with sparse)
     hyde_task   = asyncio.create_task(_hyde_and_expand(question_text))
-    sparse      = _sparse_retrieve(question_text, db, top_k=20, org_id=org_id)
+    sparse      = _sparse_retrieve(question_text, db, top_k=20, workspace_id=workspace_id, customer_name=customer_name)
     hyde_text, rephrasings = await hyde_task
 
     # Build all query variants: original + hyde + rephrasings
@@ -72,7 +72,7 @@ async def retrieve_relevant_chunks(
         query_variants.append(hyde_text)
     query_variants.extend(rephrasings)
 
-    dense_lists = await _multi_dense_retrieve(query_variants, db, top_k=10, org_id=org_id)
+    dense_lists = await _multi_dense_retrieve(query_variants, db, top_k=10, workspace_id=workspace_id, customer_name=customer_name)
 
     # Layer 3-4: RRF fusion of all ranked lists
     fused = _reciprocal_rank_fusion(*dense_lists, sparse)
@@ -81,7 +81,7 @@ async def retrieve_relevant_chunks(
     boosted = _apply_source_boost(fused, db)
 
     # Layer 6: Feedback scoring
-    scored = _apply_feedback_score(boosted, db, org_id)
+    scored = _apply_feedback_score(boosted, db, workspace_id)
 
     # Layer 7: Reranking
     candidates = sorted(scored, key=lambda r: r.similarity, reverse=True)[:20]
@@ -149,7 +149,8 @@ async def _multi_dense_retrieve(
     queries: list[str],
     db: Session,
     top_k: int,
-    org_id: int | None,
+    workspace_id: int | None,
+    customer_name: str | None = None,
 ) -> list[list[RetrievalResult]]:
     """Embed all query variants in one batch, retrieve top_k for each."""
     if not queries:
@@ -160,7 +161,7 @@ async def _multi_dense_retrieve(
 
     results = []
     for vec in embeddings:
-        results.append(await _dense_retrieve_vec(vec, db, top_k, org_id))
+        results.append(await _dense_retrieve_vec(vec, db, top_k, workspace_id, customer_name))
     return results
 
 
@@ -168,11 +169,12 @@ async def _dense_retrieve_vec(
     vec: list[float],
     db: Session,
     top_k: int,
-    org_id: int | None,
+    workspace_id: int | None,
+    customer_name: str | None = None,
 ) -> list[RetrievalResult]:
     vec_str = "[" + ",".join(str(float(v)) for v in vec) + "]"
 
-    if org_id is not None:
+    if workspace_id is not None:
         rows = db.execute(
             text("""
                 SELECT kc.id,
@@ -181,11 +183,16 @@ async def _dense_retrieve_vec(
                 JOIN   documents d ON d.id = kc.document_id
                 WHERE  kc.embedding IS NOT NULL
                 AND    kc.is_leaf = TRUE
-                AND    d.org_id = :org_id
+                AND    d.workspace_id = :workspace_id
+                AND    (
+                    kc.source_type != 'approved_answer'
+                    OR kc.customer_name IS NULL
+                    OR kc.customer_name = :customer_name
+                )
                 ORDER  BY kc.embedding <=> CAST(:vec AS vector)
                 LIMIT  :k
             """),
-            {"vec": vec_str, "k": top_k, "org_id": org_id},
+            {"vec": vec_str, "k": top_k, "workspace_id": workspace_id, "customer_name": customer_name or ""},
         ).fetchall()
     else:
         rows = db.execute(
@@ -223,12 +230,13 @@ def _sparse_retrieve(
     question_text: str,
     db: Session,
     top_k: int,
-    org_id: int | None,
+    workspace_id: int | None,
+    customer_name: str | None = None,
 ) -> list[RetrievalResult]:
     if not question_text.strip():
         return []
     try:
-        if org_id is not None:
+        if workspace_id is not None:
             rows = db.execute(
                 text("""
                     SELECT kc.id,
@@ -240,13 +248,18 @@ def _sparse_retrieve(
                     JOIN   documents d ON d.id = kc.document_id
                     WHERE  kc.embedding IS NOT NULL
                     AND    kc.is_leaf = TRUE
-                    AND    d.org_id = :org_id
+                    AND    d.workspace_id = :workspace_id
+                    AND    (
+                        kc.source_type != 'approved_answer'
+                        OR kc.customer_name IS NULL
+                        OR kc.customer_name = :customer_name
+                    )
                     AND    to_tsvector('english', kc.text)
                            @@ plainto_tsquery('english', :q)
                     ORDER  BY rank DESC
                     LIMIT  :k
                 """),
-                {"q": question_text, "org_id": org_id, "k": top_k},
+                {"q": question_text, "workspace_id": workspace_id, "k": top_k, "customer_name": customer_name or ""},
             ).fetchall()
         else:
             rows = db.execute(
@@ -307,17 +320,9 @@ def _reciprocal_rank_fusion(*ranked_lists: list[RetrievalResult]) -> list[Retrie
 # ---------------------------------------------------------------------------
 
 def _apply_source_boost(results: list[RetrievalResult], db: Session) -> list[RetrievalResult]:
-    from app.models import Document
-
-    doc_ids = {r.chunk.document_id for r in results}
-    docs = {d.id: d for d in db.query(Document).filter(Document.id.in_(doc_ids)).all()}
-
     boosted = []
     for r in results:
         multiplier = _BOOST.get(r.chunk.source_type, 1.0)
-        doc = docs.get(r.chunk.document_id)
-        if doc and doc.is_starter:
-            multiplier *= _STARTER_PENALTY
         boosted.append(RetrievalResult(chunk=r.chunk, similarity=r.similarity * multiplier))
     return boosted
 
@@ -329,9 +334,9 @@ def _apply_source_boost(results: list[RetrievalResult], db: Session) -> list[Ret
 def _apply_feedback_score(
     results: list[RetrievalResult],
     db: Session,
-    org_id: int | None,
+    workspace_id: int | None,
 ) -> list[RetrievalResult]:
-    if not org_id or not results:
+    if not workspace_id or not results:
         return results
 
     ids = [r.chunk.id for r in results]
@@ -342,10 +347,10 @@ def _apply_feedback_score(
                        SUM(CASE WHEN signal = 'positive' THEN 1 ELSE -1 END) AS net
                 FROM   chunk_feedback
                 WHERE  chunk_id IN :ids
-                AND    org_id   = :org_id
+                AND    workspace_id   = :workspace_id
                 GROUP  BY chunk_id
             """),
-            {"ids": tuple(ids), "org_id": org_id},
+            {"ids": tuple(ids), "workspace_id": workspace_id},
         ).fetchall()
     except Exception:
         return results
@@ -463,20 +468,20 @@ def _expand_to_parents(
 # Feedback signal writers (called from approve / reject / regen routes)
 # ---------------------------------------------------------------------------
 
-def record_positive_feedback(chunk_ids: list[int], org_id: int, db: Session) -> None:
-    _write_feedback(chunk_ids, org_id, "positive", db)
+def record_positive_feedback(chunk_ids: list[int], workspace_id: int, db: Session) -> None:
+    _write_feedback(chunk_ids, workspace_id, "positive", db)
 
 
-def record_negative_feedback(chunk_ids: list[int], org_id: int, db: Session) -> None:
-    _write_feedback(chunk_ids, org_id, "negative", db)
+def record_negative_feedback(chunk_ids: list[int], workspace_id: int, db: Session) -> None:
+    _write_feedback(chunk_ids, workspace_id, "negative", db)
 
 
-def _write_feedback(chunk_ids: list[int], org_id: int, signal: str, db: Session) -> None:
+def _write_feedback(chunk_ids: list[int], workspace_id: int, signal: str, db: Session) -> None:
     if not chunk_ids:
         return
     try:
         for cid in chunk_ids:
-            db.add(ChunkFeedback(chunk_id=cid, org_id=org_id, signal=signal))
+            db.add(ChunkFeedback(chunk_id=cid, workspace_id=workspace_id, signal=signal))
     except Exception:
         pass
 

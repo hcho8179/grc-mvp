@@ -17,10 +17,25 @@ There are two types of customers, both with the same problem approached differen
 **Type 1 — Companies with an internal security team**
 Series B/C SaaS companies with a dedicated GRC analyst or security engineer in-house. They receive security questionnaires regularly — sometimes 5–10 per month — and the analyst is the bottleneck. They buy Greenlight directly and use it themselves. The CISO or GRC analyst is both the buyer and the day-to-day user.
 
-**Type 2 — Companies with no internal security team**
-Smaller companies (10–100 employees) with no dedicated security person. When a questionnaire arrives from a big prospect, they hire a GRC consulting firm to handle it on their behalf. The consulting firm uses Greenlight across all their clients — one tool, many client workspaces, each fully isolated. The consulting firm is the buyer; their clients are the beneficiaries.
+**Type 2 — GRC consulting firms**
+Smaller companies (10–100 employees) with no dedicated security person hire a GRC consulting firm to handle questionnaires on their behalf. The consulting firm uses Greenlight across all their clients — one workspace, multiple clients, each fully isolated from one another. The consulting firm is the buyer; their clients are the beneficiaries.
 
 Both types feel the same pain. The difference is who in the chain feels it most directly and who makes the buying decision.
+
+---
+
+## Australian Market Focus
+
+Greenlight is built specifically for the Australian market. The primary competitors — Hypercomply and Conveyor — are US-focused tools that do not cover Australian compliance frameworks at all.
+
+Australian GRC consultants and security teams regularly receive questionnaires built around:
+
+- **ASD Essential Eight** — the Australian Signals Directorate's eight mitigation strategies, required by almost every Australian government agency and large enterprise
+- **Australian Privacy Act 1988 / Australian Privacy Principles** — mandatory for any company handling Australian personal data; includes the Notifiable Data Breaches (NDB) scheme
+- **APRA CPS 234** — APRA's information security prudential standard, mandatory for all banks, insurers, and superannuation funds regulated by APRA
+- **ISO 27001** — global standard but widely adopted in Australia, especially in financial services and health
+
+A consultant using a US tool starts from zero on every Essential Eight or Privacy Act questionnaire. A consultant using Greenlight starts with 45 pre-loaded Australian-specific Q&A pairs on day one — covering all four frameworks above — plus everything they've approved in past questionnaires compounding on top.
 
 ---
 
@@ -36,7 +51,7 @@ Before answering any questionnaires, the team uploads their company's security d
 
 The system processes each document and breaks it into searchable chunks. When a question comes in later, it finds the most relevant parts of these documents and uses them to draft an answer.
 
-**For new customers with no documents yet:** the tool includes 20 starter policy templates covering common SOC 2 and ISO 27001 topics so teams can get started immediately. A banner warns them these are generic templates and prompts them to upload their real policies.
+**For new customers with no documents yet:** the system's Answer Library is pre-loaded with 45 Australian GRC Q&A pairs covering the Essential Eight, Privacy Act, APRA CPS 234, and ISO 27001. These are real, well-written answers to the most commonly asked Australian security questions — so the AI can start drafting useful answers from the very first questionnaire, even before any documents are uploaded.
 
 ---
 
@@ -47,7 +62,7 @@ The reviewer uploads the customer's questionnaire as an Excel file. Because ever
 1. **Preview** — the tool shows the first few rows of the file so the reviewer can see what's in each column
 2. **Map columns** — the reviewer clicks to mark which column is the question, which is the Yes/No answer column, and optionally which is the evidence/explanation column
 
-This means the tool works with any Excel layout — it doesn't require a specific template.
+This means the tool works with any Excel layout — it doesn't require a specific template. The reviewer also enters the customer name (e.g. "Atlas Bank") at this step, which powers the client answer isolation described below.
 
 ---
 
@@ -56,10 +71,11 @@ This means the tool works with any Excel layout — it doesn't require a specifi
 Once the questionnaire is set up, the reviewer clicks "Draft Answers." The system goes through every question and:
 
 1. Searches the knowledge base for the most relevant policy chunks
-2. Drafts a full answer (evidence/explanation)
-3. Drafts a short Yes/No/Partial/N-A answer for questionnaires that have a separate column for it
-4. Assigns a confidence score (High / Medium / Low) based on how closely the source documents matched the question
-5. Shows which specific policy documents it used as sources
+2. Searches the answer library for previously approved answers to similar questions
+3. Drafts a full answer (evidence/explanation)
+4. Drafts a short Yes/No/Partial/N-A answer for questionnaires that have a separate column for it
+5. Assigns a confidence score (High / Medium / Low) based on how closely the sources matched the question
+6. Shows which specific policy documents or past answers it drew from
 
 This usually takes 1–3 minutes for a full questionnaire.
 
@@ -82,7 +98,6 @@ For each question the reviewer can:
 - **Approve** — marks the answer as final and includes it in the export
 - **Reject / Flag** — marks it as excluded; it will not appear in the export
 - **Re-draft** — asks the system to try again (useful if the first draft missed the point)
-- **Assign** — send the question to a specific team member (e.g. a network question goes to the infra engineer)
 - **Comment** — leave a note for teammates on a specific question
 
 A progress counter at the top shows how many questions are approved out of the total.
@@ -92,8 +107,6 @@ A progress counter at the top shows how many questions are approved out of the t
 ### Step 5 — Export
 
 When the reviewer is ready, they click Export. The tool writes the approved answers back into the original Excel file layout — the customer's column structure is preserved. Unapproved, flagged, or edited-but-not-approved answers are never included.
-
-If the customer's questionnaire file contains Excel macros or VBA scripts (common with large financial institutions that lock cells programmatically), the tool detects this automatically and preserves the macro project in the exported file. Answers are also matched to any dropdown lists defined in the file so the output passes Excel's own data validation without manual correction.
 
 The exported file is named with the questionnaire name and today's date, ready to send.
 
@@ -111,16 +124,38 @@ The confidence scoring is there precisely for this reason: Low-confidence answer
 
 ### What makes Greenlight different — the compounding answer library
 
-Every answer your team approves is automatically saved to a searchable library. When a similar question appears in a future questionnaire, the system surfaces the previously approved answer as a suggestion — already written, already reviewed, already trusted.
+Every answer a reviewer approves is automatically saved to a searchable library. When a similar question appears in a future questionnaire, the system surfaces the previously approved answer as a suggestion — already written, already reviewed, already trusted.
 
 Unlike competitors that treat every questionnaire as a blank slate, Greenlight gets smarter with every one you complete. Your 10th questionnaire takes a fraction of the time your first did. Your institutional security knowledge stops living in someone's inbox and starts compounding into a permanent asset.
+
+**Two-layer answer system — client isolation built in**
+
+For GRC consulting firms managing multiple clients, answer isolation is critical. An answer written for Atlas Bank ("our RTO is 4 hours per our contract with Atlas Bank") must never be suggested when filling out a questionnaire for AusMed Health Systems. Getting this wrong is a professional liability.
+
+Greenlight solves this with a two-layer answer system:
+
+- **Generic answers** — answers with no client-specific content (e.g. "Yes, we use MFA across all systems") are saved as generic and reused across every client. They compound the fastest.
+- **Client-specific answers** — answers that mention the client by name, reference specific contract terms, or contain client-specific details are saved against that client only and never shown for other clients.
+
+The system auto-detects which category an answer falls into as the reviewer types. If the draft answer contains no client-specific signals — no client name, no specific cloud regions or IP addresses, no URLs, no headcounts — a pre-checked checkbox appears: *"Looks generic — save for all clients, not just Atlas Bank?"* The reviewer can accept or override. Answers can also be promoted to generic later from the Answer Library page.
+
+This means a consulting firm's library splits naturally over time: generic knowledge (shared, fast-compounding) and per-client knowledge (isolated, accurate). Both compound. Neither contaminates the other.
 
 ---
 
 ### Other features
 
-**My Assignments**
-Team members see a personal inbox of all questions assigned to them across every questionnaire — question text, confidence, and a link directly to that questionnaire.
+**Share link — read-only progress view**
+From any questionnaire, the reviewer can generate a read-only link and share it with stakeholders (a manager, a client, a subject matter expert) so they can follow along without needing a Greenlight account. The link shows the questionnaire name, questions, drafted answers, and approval status — but gives no ability to edit or approve anything. Useful for getting sign-off from someone outside the team without giving them full system access.
+
+**Answer version history**
+Every time a draft answer is edited or approved, the previous version is automatically saved. Reviewers can open the version history on any question to see exactly what changed, when, and who made the change. Useful for audits, for understanding why an answer was revised, and for recovering a previous version if an edit went the wrong way.
+
+**KB Health**
+A diagnostic page that shows how well the knowledge base is performing — which questions had low-confidence matches, which topics have gaps, and where uploading more documentation would help. Documents not updated in 90+ days show an amber staleness warning, turning red at 180+ days.
+
+**Answer Library**
+A searchable library of all approved answers across every questionnaire. Shows which client each answer is tagged to, allows promoting a client-specific answer to generic, and displays answers that may be stale if the underlying policy was recently updated.
 
 **Trash and restore**
 Deleted questionnaires and documents go to a trash bin rather than being permanently removed. Owners and admins can restore them. Nothing is lost by accident.
@@ -131,14 +166,64 @@ Every action is logged — who uploaded what, who approved which answer, who exp
 **Dashboard**
 Overview of all questionnaires, total questions answered, approval rate, average confidence score, and estimated time saved.
 
-**Knowledge base health**
-A page that shows how well the knowledge base is performing — which questions had low-confidence matches, which topics have gaps, and where uploading more documentation would help.
-
 **Team management**
 Owners can invite team members by email. Three roles:
 - **Owner** — full access, can manage billing and team
 - **Admin** — can manage questionnaires, knowledge base, and team members
-- **User** — can review and approve answers on questionnaires assigned to them
+- **Member** — can review and approve answers on questionnaires assigned to them
+
+---
+
+### How long does it actually take?
+
+The AI drafting speed is fixed and measurable — with a 6-second gap between questions (to stay within API rate limits), a 200-question questionnaire takes roughly 20 minutes to draft. The human review time depends heavily on knowledge base maturity and questionnaire complexity.
+
+**Realistic time estimates:**
+
+| Scenario | AI drafting | Human review | Total |
+|---|---|---|---|
+| Small check (6–20 questions) | 1–2 min | 5–15 min | **~15–20 min** |
+| Medium questionnaire (50–100 questions) | 5–10 min | 30–60 min | **~1 hour** |
+| Large enterprise questionnaire (200 questions), first time | 20 min | 3–5 hours | **~4–6 hours** |
+| Large enterprise questionnaire (200 questions), populated KB | 20 min | 1–2 hours | **~1.5–3 hours** |
+| Annual renewal of a familiar questionnaire | 20 min | 30–60 min | **~1 hour** |
+
+**Why review time varies so much:**
+
+Not all questions are equal. In a real enterprise questionnaire, roughly:
+- ~60% are straightforward — high confidence, quick to read and approve (15–30 seconds each)
+- ~30% need checking — medium confidence, reviewer needs to verify the source or tweak the wording (2–5 minutes each)
+- ~10% need a subject matter expert — low confidence or no KB match, requires finding the right person or writing from scratch (10–30 minutes each)
+
+The tool doesn't eliminate the hard questions. It eliminates the easy ones, which is still the majority of the work.
+
+**How it compounds over time:**
+
+The first questionnaire with an empty knowledge base is the slowest — every answer is low confidence and needs manual review. By the third or fourth questionnaire, the answer library has enough approved answers that familiar questions are pre-filled and the reviewer just confirms them. Annual renewals from the same client become close to a 30-minute job.
+
+**vs. fully manual:**
+A 200-question enterprise questionnaire done manually typically takes a GRC consultant 2–3 full working days. With Greenlight and a mature knowledge base, the same questionnaire takes 1.5–3 hours — roughly 5–10x faster depending on how well-stocked the knowledge base is.
+
+---
+
+### How Greenlight prevents hallucinations
+
+AI hallucination — where a model confidently states something false — is a serious risk in a compliance context. A hallucinated answer on a security questionnaire could misrepresent your security posture to a customer or regulator. Greenlight has five layers of defence against this:
+
+**1. Grounded generation only**
+The AI is explicitly instructed to answer solely from the retrieved document chunks and approved answers provided to it. It is told not to invent facts, fill gaps from general knowledge, or assume capabilities that aren't evidenced in the source material. If the sources don't support a claim, the AI is instructed to say so rather than guess.
+
+**2. Every source shown to the reviewer**
+Every drafted answer displays the exact document passages and previously approved answers it drew from, each with a relevance match score. The reviewer can read the source alongside the answer and immediately spot if the AI has stretched or misrepresented it.
+
+**3. Confidence scoring flags weak matches**
+When the knowledge base has little or nothing relevant to a question, the retrieval scores are low — and the system reflects this with a Low confidence badge. Low-confidence answers are visually flagged so reviewers know exactly where to focus their scrutiny, rather than treating every answer with the same level of trust.
+
+**4. "No knowledge base context" hard warning**
+If the retriever finds no relevant content at all, the question is marked with a red MANUAL badge and a warning: "No documents in your knowledge base matched this question." The reviewer is told explicitly that the AI had nothing to work from and the answer must be written manually. The AI never silently fabricates an answer to avoid looking uncertain.
+
+**5. Human approval gate — nothing leaves without sign-off**
+Every answer stays in draft state until a human reviewer reads it and explicitly approves it. There is no automated export, no batch-send, no way for an answer to reach a customer without a person signing off. The approval is logged with the reviewer's name and timestamp. This gate exists precisely because AI output cannot be trusted unconditionally — the system is designed around that assumption.
 
 ---
 
@@ -160,14 +245,14 @@ Since this is a security product, I want to be transparent about how the tool it
 
 **Data protection**
 - Uploaded files (Excel questionnaires, policy documents) are stored in S3-compatible object storage — not in the database
-- All data is scoped to the organisation at the database query level — every query is filtered by `org_id`, making cross-tenant data access structurally impossible without a deliberate application bypass
-- For consulting firms managing multiple clients: each client is a fully isolated workspace with its own `org_id`. No query, search, or suggestion can ever surface data from one client workspace in another. The answer library, knowledge base, and all AI drafting are strictly per-org.
+- All data is scoped to the workspace at the database query level — every query is filtered by `workspace_id`, making cross-tenant data access structurally impossible without a deliberate application bypass
+- For consulting firms managing multiple clients: all clients share one workspace but are isolated by `customer_name` at the answer retrieval level. The RAG pipeline SQL filters approved answers so that only generic answers and the current client's answers are ever retrieved — other clients' answers are structurally invisible, not just hidden in the UI
 - Soft deletes only — data is never permanently destroyed without explicit action
-- **Live document replacement with staleness tracking** — when a policy changes, admins can replace the file in-place rather than deleting and re-uploading. The system drops all old chunks, re-parses and re-embeds the new content immediately, and preserves the document's ID so the audit trail remains intact. Three mechanisms ensure stale content never quietly persists: (1) documents not updated in 90+ days show an amber warning badge on the knowledge base list, turning red at 180+ days; (2) if an admin uploads a file with the same name as an existing document, the system detects it as a likely update and prompts "replace the existing version?" instead of creating a silent duplicate; (3) a `content_updated_at` timestamp resets on every replace so the staleness indicators always reflect the true age of the embedded content.
+- **Live document replacement with staleness tracking** — when a policy changes, admins can replace the file in-place rather than deleting and re-uploading. The system drops all old chunks, re-parses and re-embeds the new content immediately, and preserves the document's ID so the audit trail remains intact
 
 **AI answer safety**
-- **Negation / trap-question detection** — security questionnaires sometimes use reverse-phrasing to catch dishonest vendors (e.g. "Are there any employees exempt from background checks?"). The AI is explicitly instructed to detect this pattern and verify that its Yes/No answer reflects the company's secure, compliant posture — not accidentally admit a gap through a keyword match. Each flagged answer includes a one-line polarity note so the human reviewer knows why the answer was chosen that way.
-- **Prompt injection defence** — every document uploaded to the knowledge base is sanitized before it is chunked and stored. Lines matching known injection patterns (system instruction overrides, "ignore previous instructions", model-specific tokens, Chinese-language equivalents) are stripped and logged. At generation time, retrieved document chunks are wrapped in explicit data-only boundaries so the AI is structurally prevented from treating document content as commands — even if a crafted phrase were to slip through the ingest filter.
+- **Negation / trap-question detection** — security questionnaires sometimes use reverse-phrasing to catch dishonest vendors (e.g. "Are there any employees exempt from background checks?"). The AI is explicitly instructed to detect this pattern and verify that its Yes/No answer reflects the company's secure, compliant posture — not accidentally admit a gap through a keyword match
+- **Prompt injection defence** — every document uploaded to the knowledge base is sanitized before it is chunked and stored. Lines matching known injection patterns (system instruction overrides, "ignore previous instructions", model-specific tokens) are stripped and logged. At generation time, retrieved document chunks are wrapped in explicit data-only boundaries so the AI is structurally prevented from treating document content as commands
 
 **Application security**
 - Security headers on every response: Content Security Policy, X-Frame-Options, Referrer-Policy, Permissions-Policy
@@ -178,20 +263,16 @@ Since this is a security product, I want to be transparent about how the tool it
 
 **AI retrieval quality (RAG)**
 
-The engine that finds the right policy content for each question uses a multi-layer pipeline that goes significantly beyond what competitors ship:
+The engine that finds the right policy content for each question uses a multi-layer pipeline:
 
-- **Hybrid search** — every question is searched two ways simultaneously: semantic vector search (understands meaning) and full-text keyword search (catches exact compliance terms like "SOC 2 Type II" or "AES-256" that embedding search can miss). Results are merged using Reciprocal Rank Fusion.
-- **HyDE + query expansion** — before searching, the system generates a hypothetical answer and three rephrasings of the question, then searches across all five variants. This dramatically improves recall for verbosely-worded enterprise questionnaire questions.
-- **Source-aware ranking** — previously approved human-reviewed answers are ranked 35% higher than generic policy documents. Starter templates are ranked 25% lower. The more questionnaires a team completes, the more the retrieval is weighted toward their own trusted answers.
-- **Feedback learning** — every time a reviewer approves an answer, the source chunks that contributed receive a positive signal. Every rejection or re-draft triggers a negative signal. Over time, chunks that consistently produce bad answers are automatically down-ranked for that organisation — the system gets smarter with every review decision, without any manual curation.
-- **Parent-child retrieval** — documents are stored at two levels: small child chunks (~150 tokens) for precise retrieval, and large parent chunks (~800 tokens) for rich LLM context. The system finds answers with the precision of a small chunk but sends the full surrounding section to the AI — 5× more context per result.
-- **Semantic chunking** — documents are split at structural boundaries (headers, numbered sections, paragraph breaks) rather than arbitrary token counts, so a policy clause about encryption is never split mid-sentence across two chunks.
-- **Voyage reranking** — after retrieval, a dedicated reranking model re-scores the top 20 candidates for true relevance before the final selection is sent to the LLM.
-- **Retrieval evaluation** — an internal dashboard (`/admin/rag-eval`) continuously measures retrieval quality against the organisation's own approved answer history. Metrics include hit rate, precision@1, and Mean Reciprocal Rank — so degradation is caught before it affects answer quality.
-
-**Monitoring**
-- Error tracking via Sentry (crash reports, never user data)
-- Automated test suite runs on every code change via CI pipeline
+- **Hybrid search** — every question is searched two ways simultaneously: semantic vector search (understands meaning) and full-text keyword search (catches exact compliance terms like "SOC 2 Type II" or "AES-256" that embedding search can miss). Results are merged using Reciprocal Rank Fusion
+- **HyDE + query expansion** — before searching, the system generates a hypothetical answer and three rephrasings of the question, then searches across all five variants. This dramatically improves recall for verbosely-worded enterprise questionnaire questions
+- **Source-aware ranking** — previously approved human-reviewed answers are ranked 35% higher than generic policy documents. The more questionnaires a team completes, the more retrieval is weighted toward their own trusted answers
+- **Client-aware retrieval** — the retrieval SQL explicitly filters answer library chunks by client name. Generic answers and the current client's answers are retrieved; other clients' answers are excluded at the query level, not just filtered in application code
+- **Feedback learning** — every time a reviewer approves an answer, the source chunks that contributed receive a positive signal. Every rejection or re-draft triggers a negative signal. Over time, chunks that consistently produce bad answers are automatically down-ranked for that organisation
+- **Parent-child retrieval** — documents are stored at two levels: small child chunks (~150 tokens) for precise retrieval, and large parent chunks (~800 tokens) for rich LLM context. The system finds answers with the precision of a small chunk but sends the full surrounding section to the AI — 5× more context per result
+- **Semantic chunking** — documents are split at structural boundaries (headers, numbered sections, paragraph breaks) rather than arbitrary token counts, so a policy clause about encryption is never split mid-sentence across two chunks
+- **Reranking** — after retrieval, a dedicated reranking model re-scores the top 20 candidates for true relevance before the final selection is sent to the LLM
 
 **Team invites**
 - Owners and admins generate a unique invite link from the Team page — there is no permanent "invite code"
@@ -199,17 +280,20 @@ The engine that finds the right policy content for each question uses a multi-la
 - Admins can revoke any active link at any time before it is used
 - The invite token is never stored in the database — only its hash — so a database leak does not expose usable links
 
+**Current limitations**
+- **Single active sheet only** — the questionnaire uploader reads the first (active) sheet of an Excel file. Questionnaires spread across multiple tabs are not yet supported (on the roadmap)
+- **Sequential generation per workspace** — answer generation runs one questionnaire at a time within a workspace. For a solo consultant this is invisible; for a busy team where multiple members click Generate simultaneously, jobs queue up. Future fix is a dedicated task queue to run them in parallel
+- **No stale answer detection** — if you replace a policy document in the knowledge base, approved answers that were generated from the old version are not automatically flagged as potentially outdated. Reviewers must manually check the answer library after a major policy update
+- **No deadline or SLA tracking** — questionnaires have no due date field. There is no built-in reminder if a questionnaire has been sitting in draft for too long
+- **No compliance framework mapping** — questions cannot yet be tagged to specific controls (e.g. ISO 27001 Annex A, Essential Eight maturity levels). Mapping is manual
+
 **Coming soon**
 - MFA (authenticator app / TOTP) — opt-in per user, with org-level enforcement for admins
-- Data retention / purge job — soft-deleted items auto-permanently removed after 90 days (with privacy policy disclosure)
+- Data retention / purge job — soft-deleted items auto-permanently removed after 90 days
 - SSO / SAML — single sign-on via Google Workspace, Okta, Azure AD
-- Org-level admin settings — force MFA for all members, configure data retention period
 - Multi-sheet Excel support — questionnaires that span multiple tabs in the same file
+- @mention and notifications — tag a team member directly in a comment to notify them by email; useful for routing technical questions to the right person without leaving the platform
 - Word and PDF questionnaire upload — not just Excel files
-- Web portal integrations — OneTrust, Vanta, Whistic (for customers who share a portal link instead of a file)
-- Common framework templates — pre-built questionnaire templates for CAIQ, SIG Lite, VSA so teams can start without waiting for a customer to send one
-- Australian data sovereignty — all customer data (uploaded documents, questionnaires, AI-generated content) stored exclusively on AWS Sydney region (ap-southeast-2), meeting Australian privacy and data residency requirements out of the box
-- Cloud document sync — connect Google Drive, SharePoint, or Confluence so Greenlight automatically detects when a source policy file is updated and prompts the team to re-embed it, eliminating the risk of answering questionnaires from stale knowledge base content
-
----
-
+- Web portal integrations — OneTrust, Vanta, Whistic
+- Australian data sovereignty — all customer data stored exclusively on AWS Sydney region (ap-southeast-2), meeting Australian privacy and data residency requirements out of the box
+- Cloud document sync — connect Google Drive or SharePoint so Greenlight automatically detects when a source policy file is updated and prompts the team to re-embed it

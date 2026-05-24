@@ -24,6 +24,12 @@ export function AuthProvider({ children }) {
     localStorage.setItem(USER_KEY, JSON.stringify(u))
   }
 
+  const refreshUser = () =>
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(u => saveUser(u))
+      .catch(() => {})
+
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
     setUser(null)
@@ -61,7 +67,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, register, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

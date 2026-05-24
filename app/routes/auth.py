@@ -12,9 +12,10 @@ from sqlalchemy.orm import Session
 
 from app.auth import COOKIE_NAME, create_access_token, get_current_user, hash_password, verify_password, needs_rehash
 from app.db import get_db
-from app.models import Invite, Organization, User
+from app.models import Invite, Workspace, User
 from app.services.audit import log_event
 from app.services.email import send_password_reset, send_verification_email
+from app.services.jobs import enqueue
 from app.utils import LoginVelocityGuard, IPSprayGuard, real_ip
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -35,10 +36,9 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     full_name: str
-    org_name: str = ""
+    workspace_name: str = ""
     invite_token: str = ""
-
-
+    workspace_type: str = "consultant"
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -46,7 +46,7 @@ class LoginRequest(BaseModel):
 
 def _slugify(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    return slug[:64] or "org"
+    return slug[:64] or "workspace"
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -62,17 +62,27 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     )
 
 
-def _user_payload(user: User, org: Organization) -> dict:
+def _user_payload(user: User, workspace: Workspace) -> dict:
     return {
         "id": user.id,
         "email": user.email,
         "full_name": user.full_name or "",
         "role": user.role,
-        "org_id": user.org_id,
-        "org_name": org.name if org else "",
-        "org_slug": org.slug if org else "",
+        "workspace_id": user.workspace_id,
+        "workspace_name": workspace.name if workspace else "",
+        "workspace_slug": workspace.slug if workspace else "",
+        "workspace_type": workspace.workspace_type if workspace else "consultant",
         "email_verified": user.email_verified,
     }
+
+
+async def _seed_answer_library(workspace_id: int) -> None:
+    """Seed the AU-focused answer library for a new workspace. Runs as a background task."""
+    try:
+        from scripts.seed_answer_library import main as _seed_main
+        await _seed_main(workspace_id)
+    except Exception as exc:
+        print(f"[seed] Answer library seeding failed for workspace {workspace_id}: {exc}")
 
 
 @router.post("/register")
@@ -84,7 +94,7 @@ async def register(request: Request, req: RegisterRequest, response: Response, b
     if db.query(User).filter(User.email == req.email.lower().strip()).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    new_org_id: int | None = None
+    new_workspace_id: int | None = None
     invite: Invite | None = None
     if req.invite_token:
         token_hash = hashlib.sha256(req.invite_token.strip().encode()).hexdigest()
@@ -97,47 +107,46 @@ async def register(request: Request, req: RegisterRequest, response: Response, b
             raise HTTPException(status_code=400, detail="This invite link has already been used")
         if invite.expires_at < datetime.now(timezone.utc):
             raise HTTPException(status_code=400, detail="This invite link has expired")
-        org = db.query(Organization).filter(Organization.id == invite.org_id).first()
-        if not org:
-            raise HTTPException(status_code=404, detail="Organisation not found")
+        workspace = db.query(Workspace).filter(Workspace.id == invite.workspace_id).first()
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Workspace not found")
         role = "member"
     else:
-        if not req.org_name.strip():
-            raise HTTPException(status_code=400, detail="Organization name required")
-        base_slug = _slugify(req.org_name)
+        if not req.workspace_name.strip():
+            raise HTTPException(status_code=400, detail="Workspace name required")
+        base_slug = _slugify(req.workspace_name)
         slug = base_slug
         counter = 1
-        while db.query(Organization).filter(Organization.slug == slug).first():
+        while db.query(Workspace).filter(Workspace.slug == slug).first():
             slug = f"{base_slug}-{counter}"
             counter += 1
-        org = Organization(name=req.org_name.strip(), slug=slug)
-        db.add(org)
+        workspace = Workspace(name=req.workspace_name.strip(), slug=slug, workspace_type=req.workspace_type if req.workspace_type in ("consultant", "company") else "consultant")
+        db.add(workspace)
         db.flush()
         role = "owner"
-        new_org_id = org.id
+        new_workspace_id = workspace.id
 
     user = User(
         email=req.email.lower().strip(),
         hashed_password=hash_password(req.password),
         full_name=req.full_name.strip() or None,
         role=role,
-        org_id=org.id,
+        workspace_id=workspace.id,
     )
     db.add(user)
     db.flush()
     if invite:
         invite.used_at = datetime.now(timezone.utc)
         invite.used_by_id = user.id
-    log_event(db, org_id=org.id, user_id=user.id, user_email=user.email,
+    log_event(db, workspace_id=workspace.id, user_id=user.id, user_email=user.email,
               action="auth.register", resource_type="auth",
-              detail={"role": role, "org_name": org.name})
+              detail={"role": role, "workspace_name": workspace.name})
     db.commit()
     db.refresh(user)
 
-    from app.services.jobs import enqueue
-    from app.services.starter_pack import seed_starter_policies
-    if new_org_id is not None:
-        background_tasks.add_task(seed_starter_policies, new_org_id)
+    # Seed AU answer library for new workspaces
+    if new_workspace_id is not None:
+        background_tasks.add_task(_seed_answer_library, new_workspace_id)
 
     # Send verification email via persistent job queue
     verification_token = secrets.token_urlsafe(32)
@@ -149,9 +158,9 @@ async def register(request: Request, req: RegisterRequest, response: Response, b
     verify_url = f"{get_settings().app_url}/verify-email?token={verification_token}"
     enqueue("send_verification_email", {"email": user.email, "url": verify_url, "name": user.full_name or ""})
 
-    token = create_access_token(user.id, user.org_id)
+    token = create_access_token(user.id, user.workspace_id)
     _set_auth_cookie(response, token)
-    return {"user": _user_payload(user, org)}
+    return {"user": _user_payload(user, workspace)}
 
 
 @router.post("/login")
@@ -162,14 +171,14 @@ def login(request: Request, req: LoginRequest, response: Response, db: Session =
 
     # Layer 1 — per-IP spray guard: blocks password spraying across many emails
     if IPSprayGuard.is_blocked(ip):
-        log_event(db, org_id=0, user_id=None, user_email=email,
+        log_event(db, workspace_id=0, user_id=None, user_email=email,
                   action="auth.login_blocked", resource_type="auth",
                   detail={"reason": "ip_spray_guard", "ip": ip})
         raise HTTPException(status_code=429, detail="Too many failed attempts — try again in 15 minutes")
 
     # Layer 2 — per-email velocity guard: blocks credential stuffing across rotating IPs
     if LoginVelocityGuard.is_locked(email):
-        log_event(db, org_id=0, user_id=None, user_email=email,
+        log_event(db, workspace_id=0, user_id=None, user_email=email,
                   action="auth.login_blocked", resource_type="auth",
                   detail={"reason": "email_velocity_guard", "ip": ip})
         raise HTTPException(status_code=429, detail="Too many failed attempts — try again in 15 minutes")
@@ -190,13 +199,13 @@ def login(request: Request, req: LoginRequest, response: Response, db: Session =
     if needs_rehash(user.hashed_password):
         user.hashed_password = hash_password(req.password)
 
-    org = db.query(Organization).filter(Organization.id == user.org_id).first()
-    log_event(db, org_id=user.org_id, user_id=user.id, user_email=user.email,
+    workspace = db.query(Workspace).filter(Workspace.id == user.workspace_id).first()
+    log_event(db, workspace_id=user.workspace_id, user_id=user.id, user_email=user.email,
               action="auth.login", resource_type="auth")
     db.commit()
-    token = create_access_token(user.id, user.org_id)
+    token = create_access_token(user.id, user.workspace_id)
     _set_auth_cookie(response, token)
-    return {"user": _user_payload(user, org)}
+    return {"user": _user_payload(user, workspace)}
 
 
 @router.post("/logout")
@@ -207,8 +216,8 @@ def logout(response: Response):
 
 @router.get("/me")
 def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
-    return _user_payload(current_user, org)
+    workspace = db.query(Workspace).filter(Workspace.id == current_user.workspace_id).first()
+    return _user_payload(current_user, workspace)
 
 
 # ── Password reset ────────────────────────────────────────────────────────────
@@ -273,7 +282,7 @@ def reset_password(request: Request, req: ResetPasswordRequest, db: Session = De
     user.hashed_password     = hash_password(req.new_password)
     user.reset_token_hash    = None   # single-use — invalidate immediately
     user.reset_token_expires = None
-    log_event(db, org_id=user.org_id, user_id=user.id, user_email=user.email,
+    log_event(db, workspace_id=user.workspace_id, user_id=user.id, user_email=user.email,
               action="auth.password_reset", resource_type="auth")
     db.commit()
     return {"status": "ok"}
@@ -291,7 +300,7 @@ def change_password(
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
     current_user.hashed_password = hash_password(req.new_password)
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="auth.password_changed", resource_type="auth")
     db.commit()
     return {"status": "ok"}
@@ -303,7 +312,7 @@ def change_password(
 def list_team(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     members = (
         db.query(User)
-        .filter(User.org_id == current_user.org_id, User.is_active == True)
+        .filter(User.workspace_id == current_user.workspace_id, User.is_active == True)
         .order_by(User.created_at)
         .all()
     )
@@ -343,7 +352,7 @@ def change_role(
 
     target = db.query(User).filter(
         User.id == user_id,
-        User.org_id == current_user.org_id,
+        User.workspace_id == current_user.workspace_id,
     ).first()
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
@@ -356,15 +365,15 @@ def change_role(
 
     target.role = req.role
 
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="team.role_changed", resource_type="auth",
               detail={"target_email": target.email, "from": old_role, "to": req.role})
     db.commit()
 
-    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
+    org = db.query(Workspace).filter(Workspace.id == current_user.workspace_id).first()
     return {
         "updated": {"id": target.id, "email": target.email, "role": target.role},
-        "you": _user_payload(current_user, org),
+        "you": _user_payload(current_user, workspace),
     }
 
 
@@ -387,7 +396,7 @@ def verify_email(req: VerifyEmailRequest, db: Session = Depends(get_db)):
     user.email_verified             = True
     user.verification_token_hash    = None
     user.verification_token_expires = None
-    log_event(db, org_id=user.org_id, user_id=user.id, user_email=user.email,
+    log_event(db, workspace_id=user.workspace_id, user_id=user.id, user_email=user.email,
               action="auth.email_verified", resource_type="auth")
     db.commit()
     return {"status": "ok"}
@@ -409,7 +418,6 @@ def resend_verification(
     db.commit()
 
     from app.config import get_settings
-    from app.services.jobs import enqueue
     verify_url = f"{get_settings().app_url}/verify-email?token={token}"
     enqueue("send_verification_email", {"email": current_user.email, "url": verify_url, "name": current_user.full_name or ""})
     return {"status": "ok"}
@@ -429,7 +437,7 @@ def create_invite(
     token_hash = hashlib.sha256(token.encode()).hexdigest()
 
     invite = Invite(
-        org_id=current_user.org_id,
+        workspace_id=current_user.workspace_id,
         created_by_id=current_user.id,
         created_by_email=current_user.email,
         token_hash=token_hash,
@@ -457,7 +465,7 @@ def list_invites(
 
     invites = (
         db.query(Invite)
-        .filter(Invite.org_id == current_user.org_id)
+        .filter(Invite.workspace_id == current_user.workspace_id)
         .order_by(Invite.created_at.desc())
         .limit(50)
         .all()
@@ -491,7 +499,7 @@ def revoke_invite(
 
     invite = db.query(Invite).filter(
         Invite.id == invite_id,
-        Invite.org_id == current_user.org_id,
+        Invite.workspace_id == current_user.workspace_id,
     ).first()
     if not invite:
         raise HTTPException(status_code=404, detail="Invite not found")
@@ -505,7 +513,7 @@ def revoke_invite(
 
 @router.get("/invites/validate/{token}")
 def validate_invite(token: str, db: Session = Depends(get_db)):
-    """Public endpoint — returns org name so the invite page can greet the user."""
+    """Public endpoint — returns workspace name so the invite page can greet the user."""
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     invite = db.query(Invite).filter(Invite.token_hash == token_hash).first()
     if not invite:
@@ -517,5 +525,5 @@ def validate_invite(token: str, db: Session = Depends(get_db)):
     if invite.expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="This invite link has expired")
 
-    org = db.query(Organization).filter(Organization.id == invite.org_id).first()
-    return {"org_name": org.name if org else "Unknown", "expires_at": invite.expires_at.isoformat()}
+    workspace = db.query(Workspace).filter(Workspace.id == invite.workspace_id).first()
+    return {"workspace_name": workspace.name if workspace else "Unknown", "expires_at": invite.expires_at.isoformat()}

@@ -52,11 +52,11 @@ def needs_rehash(hashed: str) -> bool:
     return hashed.startswith(("$2b$", "$2a$"))
 
 
-def create_access_token(user_id: int, org_id: int) -> str:
+def create_access_token(user_id: int, workspace_id: int) -> str:
     settings = get_settings()
     payload = {
         "sub": str(user_id),
-        "org": org_id,
+        "workspace": workspace_id,
         "exp": datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS),
     }
     return jwt.encode(payload, settings.jwt_secret_key, algorithm="HS256")

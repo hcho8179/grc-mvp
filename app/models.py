@@ -35,11 +35,11 @@ EMBEDDING_DIM = 1024  # voyage-3; change to 1536 if switching to text-embedding-
 
 
 # ---------------------------------------------------------------------------
-# Organization  (tenant)
+# Workspace  (tenant)
 # ---------------------------------------------------------------------------
 
-class Organization(Base):
-    __tablename__ = "organizations"
+class Workspace(Base):
+    __tablename__ = "workspaces"
 
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -47,8 +47,9 @@ class Organization(Base):
     name = Column(String(256), nullable=False)
     slug = Column(String(64), unique=True, index=True, nullable=False)
     white_label_export = Column(Boolean, default=False, nullable=False, server_default="false")
+    workspace_type = Column(String(20), nullable=False, server_default="consultant")
 
-    users = relationship("User", back_populates="org", cascade="all, delete-orphan")
+    users = relationship("User", back_populates="workspace", cascade="all, delete-orphan")
 
 
 # ---------------------------------------------------------------------------
@@ -67,8 +68,8 @@ class User(Base):
     role = Column(String(32), default="member", nullable=False)  # owner | admin | member
     is_active = Column(Boolean, default=True, nullable=False)
 
-    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
-    org = relationship("Organization", back_populates="users")
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace = relationship("Workspace", back_populates="users")
 
     # Email verification
     email_verified             = Column(Boolean, default=False, nullable=False, server_default="false")
@@ -104,7 +105,7 @@ class Document(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     content_updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=True)
 
-    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
 
     chunks = relationship(
         "KnowledgeChunk",
@@ -141,6 +142,7 @@ class KnowledgeChunk(Base):
     source_document = Column(String(512), nullable=False)   # original filename (denormalized for fast display)
     source_section = Column(String(512), nullable=True)     # sheet name, heading, etc.
     source_type = Column(Enum(SourceType), nullable=False)
+    customer_name = Column(String(256), nullable=True)      # set for approved_answer chunks; NULL = generic
 
     text = Column(Text, nullable=False)
     embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
@@ -172,7 +174,7 @@ class ChunkFeedback(Base):
     id         = Column(Integer, primary_key=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     chunk_id   = Column(Integer, ForeignKey("knowledge_chunks.id", ondelete="CASCADE"), nullable=False, index=True)
-    org_id     = Column(Integer, ForeignKey("organizations.id",    ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id     = Column(Integer, ForeignKey("workspaces.id",    ondelete="CASCADE"), nullable=False, index=True)
     signal     = Column(String(8), nullable=False)  # "positive" | "negative"
 
 
@@ -200,7 +202,7 @@ class QuestionnaireTemplate(Base):
     format_config = Column(JSON, nullable=True)      # merged_cells, column_widths, row_heights
     times_used = Column(Integer, default=0, nullable=False)
 
-    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
 
 
 class Questionnaire(Base):
@@ -227,7 +229,7 @@ class Questionnaire(Base):
         nullable=True,
     )
 
-    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
 
     questions = relationship(
         "Question",
@@ -282,8 +284,8 @@ class Question(Base):
     conflict_warning = Column(Text, nullable=True)  # set when draft contradicts a prior approved answer
     category = Column(String(64), nullable=True, index=True)  # embedding-classified topic
 
-    # Assignment — nullable; SET NULL when user is deleted
-    assigned_to_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Flag — analyst can flag a question with a note (e.g. "asked DevOps via Slack")
+    flag_note = Column(Text, nullable=True)
 
     cited_chunks = relationship(
         "KnowledgeChunk",
@@ -319,7 +321,7 @@ class LLMCall(Base):
     question_id = Column(
         Integer, ForeignKey("questions.id", ondelete="SET NULL"), nullable=True
     )
-    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +342,8 @@ class ApprovedAnswer(Base):
     confidence_score = Column(Float, nullable=True)        # 0-1 float
     times_reused = Column(Integer, default=0, nullable=False)
     status = Column(String(50), default="active", nullable=False)  # active | archived
+    is_stale = Column(Boolean, default=False, nullable=False, server_default="false")
+    customer_name = Column(String(256), nullable=True, index=True)  # NULL = generic (reused across all clients)
 
     # Embedding of question_text only — used for answer-reuse similarity search
     embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
@@ -351,7 +355,7 @@ class ApprovedAnswer(Base):
         index=True,
     )
 
-    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +368,7 @@ class AuditLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
-    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     user_email = Column(String(256), nullable=True)   # denormalized so it survives user deletion
 
@@ -386,7 +390,7 @@ class QuestionComment(Base):
 
     question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, index=True)
     questionnaire_id = Column(Integer, ForeignKey("questionnaires.id", ondelete="CASCADE"), nullable=False, index=True)
-    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
 
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     user_email = Column(String(256), nullable=True)   # denormalized — survives user deletion
@@ -420,7 +424,7 @@ class Invite(Base):
     id = Column(Integer, primary_key=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     token_hash = Column(String(64), unique=True, index=True, nullable=False)
@@ -445,7 +449,7 @@ class AnswerVersion(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, index=True)
-    org_id      = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id      = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id     = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     user_email  = Column(String(256), nullable=True)
     user_name   = Column(String(256), nullable=True)
@@ -468,7 +472,7 @@ class Notification(Base):
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
-    org_id  = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id  = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id",         ondelete="CASCADE"), nullable=False, index=True)
 
     type  = Column(String(64), nullable=False)   # "generation_complete" | "question_assigned"

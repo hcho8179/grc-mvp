@@ -2,11 +2,15 @@
 
 import asyncio
 import hashlib
+import re
+import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from fastapi import Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -22,10 +26,11 @@ from app.models import (
     ConfidenceLevel,
     Document,
     FileType,
+    Invite,
     KnowledgeChunk,
     LLMCall,
     Notification,
-    Organization,
+    Workspace,
     Question,
     QuestionComment,
     QuestionnaireStatus,
@@ -38,7 +43,6 @@ from app.models import (
 )
 from app.services.answer_library import detect_category, classify_category, check_answer_conflict
 from app.services.audit import log_event
-from app.services.email import send_question_assigned
 from app.services.chunking import hierarchical_chunks
 from app.services.embeddings import get_embedding_provider
 from app.services.export import export_questionnaire_to_xlsx
@@ -81,12 +85,9 @@ def _confidence_reason(q: Question) -> str | None:
     )
 
 
-def _q_json(q: Question, assignee: User | None = None, chunk_scores: dict | None = None, starter_chunk_ids: set | None = None) -> dict:
+def _q_json(q: Question, chunk_scores: dict | None = None) -> dict:
     scores = chunk_scores or {}
     cited = [{"id": cid, "score": scores.get(cid)} for cid in (q.cited_chunk_ids or [])]
-    has_starter = bool(
-        starter_chunk_ids and any(cid in starter_chunk_ids for cid in (q.cited_chunk_ids or []))
-    )
     return {
         "id": q.id,
         "row_index": q.row_index,
@@ -100,19 +101,16 @@ def _q_json(q: Question, assignee: User | None = None, chunk_scores: dict | None
         "cited_chunk_ids": q.cited_chunk_ids or [],
         "cited_chunks": cited,
         "reasoning": q.reasoning or "",
-        "has_starter_sources": has_starter,
         "no_kb_context": q.status.value == "generated" and not (q.draft_answer or "").strip() and not (q.cited_chunk_ids or []),
         "conflict_warning": q.conflict_warning or None,
-        "assigned_to_id": q.assigned_to_id,
-        "assigned_to_email": assignee.email if assignee else None,
-        "assigned_to_name": assignee.full_name if assignee else None,
+        "flag_note": q.flag_note or None,
     }
 
 
 def _record_version(db: Session, q: Question, user: User, action: str) -> None:
     db.add(AnswerVersion(
         question_id=q.id,
-        org_id=user.org_id,
+        workspace_id=user.workspace_id,
         user_id=user.id,
         user_email=user.email,
         user_name=user.full_name or "",
@@ -161,13 +159,13 @@ def _qs_json(q: Questionnaire) -> dict:
     }
 
 
-def _get_approved_doc(db: Session, org_id: int):
+def _get_approved_doc(db: Session, workspace_id: int):
     doc = db.query(Document).filter(
         Document.filename == "Approved Answers",
-        Document.org_id == org_id,
+        Document.workspace_id == workspace_id,
     ).first()
     if not doc:
-        doc = Document(filename="Approved Answers", file_type=FileType.xlsx, chunk_count=0, org_id=org_id)
+        doc = Document(filename="Approved Answers", file_type=FileType.xlsx, chunk_count=0, workspace_id=workspace_id)
         db.add(doc)
         db.flush()
     return doc
@@ -180,35 +178,35 @@ def api_dashboard(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    org_id = current_user.org_id
-    total_questionnaires = db.query(Questionnaire).filter(Questionnaire.org_id == org_id, Questionnaire.deleted_at == None).count()
+    workspace_id = current_user.workspace_id
+    total_questionnaires = db.query(Questionnaire).filter(Questionnaire.workspace_id == workspace_id, Questionnaire.deleted_at == None).count()
     answered_statuses = [QuestionStatus.generated, QuestionStatus.approved]
     total_answered = (
         db.query(Question)
         .join(Questionnaire, Questionnaire.id == Question.questionnaire_id)
-        .filter(Questionnaire.org_id == org_id, Question.status.in_(answered_statuses))
+        .filter(Questionnaire.workspace_id == workspace_id, Question.status.in_(answered_statuses))
         .count()
     )
     total_approved = (
         db.query(Question)
         .join(Questionnaire, Questionnaire.id == Question.questionnaire_id)
-        .filter(Questionnaire.org_id == org_id, Question.status == QuestionStatus.approved)
+        .filter(Questionnaire.workspace_id == workspace_id, Question.status == QuestionStatus.approved)
         .count()
     )
 
-    high = db.query(Question).join(Questionnaire).filter(Questionnaire.org_id == org_id, Question.confidence == ConfidenceLevel.high).count()
-    med  = db.query(Question).join(Questionnaire).filter(Questionnaire.org_id == org_id, Question.confidence == ConfidenceLevel.medium).count()
-    low  = db.query(Question).join(Questionnaire).filter(Questionnaire.org_id == org_id, Question.confidence == ConfidenceLevel.low).count()
+    high = db.query(Question).join(Questionnaire).filter(Questionnaire.workspace_id == workspace_id, Question.confidence == ConfidenceLevel.high).count()
+    med  = db.query(Question).join(Questionnaire).filter(Questionnaire.workspace_id == workspace_id, Question.confidence == ConfidenceLevel.medium).count()
+    low  = db.query(Question).join(Questionnaire).filter(Questionnaire.workspace_id == workspace_id, Question.confidence == ConfidenceLevel.low).count()
     conf_total = high + med + low
     avg_conf_pct = round(((high * 3 + med * 2 + low) / (conf_total * 3)) * 100) if conf_total else 0
     hours_saved = round(total_answered * 8 / 60, 1)
     total_cost = round(
-        db.query(func.sum(LLMCall.cost_estimate)).filter(LLMCall.org_id == org_id).scalar() or 0.0, 4
+        db.query(func.sum(LLMCall.cost_estimate)).filter(LLMCall.workspace_id == workspace_id).scalar() or 0.0, 4
     )
 
     recent = (
         db.query(Questionnaire)
-        .filter(Questionnaire.org_id == org_id, Questionnaire.deleted_at == None)
+        .filter(Questionnaire.workspace_id == workspace_id, Questionnaire.deleted_at == None)
         .order_by(Questionnaire.created_at.desc())
         .limit(5)
         .all()
@@ -255,7 +253,7 @@ async def api_questionnaire_upload_preview(
         "filename": filename,
         "name": name.strip(),
         "customer_name": customer_name.strip() or None,
-        "org_id": current_user.org_id,
+        "workspace_id": current_user.workspace_id,
     }
     suggested = find_template_by_customer(customer_name.strip() or None, db)
     return {
@@ -278,7 +276,7 @@ def api_questionnaire_upload_finalize(
     meta = _react_upload_tmp.get(temp_id)
     if not meta:
         return JSONResponse({"error": "Upload session expired. Please upload again."}, status_code=400)
-    if meta.get("org_id") != current_user.org_id:
+    if meta.get("workspace_id") != current_user.workspace_id:
         return JSONResponse({"error": "Unauthorized."}, status_code=403)
     ans_col: int | None = int(answer_col) if answer_col.strip() else None
     ev_col: int | None = int(evidence_col) if evidence_col.strip() else None
@@ -296,7 +294,7 @@ def api_questionnaire_upload_finalize(
     store_blob: bytes | None = file_bytes  # fallback for local dev without S3
 
     if file_storage.is_configured():
-        xlsx_key = f"questionnaires/{current_user.org_id}/{uuid.uuid4().hex}.xlsx"
+        xlsx_key = f"questionnaires/{current_user.workspace_id}/{uuid.uuid4().hex}.xlsx"
         file_storage.upload(xlsx_key, file_bytes,
                             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         store_blob = None  # don't double-store in DB
@@ -312,7 +310,7 @@ def api_questionnaire_upload_finalize(
         answer_col_index=ans_col,
         secondary_answer_col_index=ev_col,
         question_col_index=question_col,
-        org_id=current_user.org_id,
+        workspace_id=current_user.workspace_id,
     )
     db.add(questionnaire)
     db.flush()
@@ -324,7 +322,7 @@ def api_questionnaire_upload_finalize(
             draft_answer=pq["existing_answer"],
             status=QuestionStatus.pending,
         ))
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="questionnaire.uploaded", resource_type="questionnaire", resource_id=questionnaire.id,
               detail={"name": questionnaire.name, "question_count": len(parsed_questions)})
     db.commit()
@@ -352,7 +350,7 @@ async def api_knowledge_upload(
     content_hash = hashlib.sha256(file_bytes).hexdigest()
     existing = db.query(Document).filter(
         Document.content_hash == content_hash,
-        Document.org_id == current_user.org_id,
+        Document.workspace_id == current_user.workspace_id,
     ).first()
     if existing:
         return JSONResponse({"error": f"Already uploaded as '{existing.filename}'."}, status_code=409)
@@ -360,7 +358,7 @@ async def api_knowledge_upload(
     # Filename collision: same name, different content — likely an updated version
     same_name = db.query(Document).filter(
         Document.filename == filename,
-        Document.org_id == current_user.org_id,
+        Document.workspace_id == current_user.workspace_id,
         Document.deleted_at == None,
         Document.is_starter == False,
     ).first()
@@ -388,7 +386,7 @@ async def api_knowledge_upload(
         file_type=FileType(ext),
         chunk_count=leaf_count,
         content_hash=content_hash,
-        org_id=current_user.org_id,
+        workspace_id=current_user.workspace_id,
     )
     db.add(doc)
     db.flush()
@@ -421,7 +419,7 @@ async def api_knowledge_upload(
         for (idx, _), embedding in zip(leaves, embeddings):
             idx_to_obj[idx].embedding = embedding
 
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="document.uploaded", resource_type="document", resource_id=doc.id,
               detail={"filename": filename, "chunk_count": leaf_count})
     db.commit()
@@ -446,7 +444,7 @@ async def api_knowledge_replace(
 
     doc = db.query(Document).filter(
         Document.id == doc_id,
-        Document.org_id == current_user.org_id,
+        Document.workspace_id == current_user.workspace_id,
         Document.deleted_at == None,
     ).first()
     if not doc:
@@ -467,7 +465,7 @@ async def api_knowledge_replace(
     duplicate = db.query(Document).filter(
         Document.content_hash == content_hash,
         Document.id != doc_id,
-        Document.org_id == current_user.org_id,
+        Document.workspace_id == current_user.workspace_id,
         Document.deleted_at == None,
     ).first()
     if duplicate:
@@ -484,6 +482,20 @@ async def api_knowledge_replace(
     h_chunks = hierarchical_chunks(text_content)
     if not h_chunks:
         return JSONResponse({"error": "File contains no meaningful text."}, status_code=400)
+
+    # Mark approved answers that cited chunks from this document as stale
+    old_chunk_ids = [
+        r[0] for r in db.query(KnowledgeChunk.id)
+        .filter(KnowledgeChunk.document_id == doc_id).all()
+    ]
+    if old_chunk_ids:
+        stale_answers = db.query(ApprovedAnswer).filter(
+            ApprovedAnswer.workspace_id == current_user.workspace_id,
+            ApprovedAnswer.status == "active",
+        ).all()
+        for a in stale_answers:
+            if a.cited_chunk_ids and any(cid in old_chunk_ids for cid in a.cited_chunk_ids):
+                a.is_stale = True
 
     # Drop old chunks (CASCADE removes ChunkFeedback automatically)
     db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).delete(synchronize_session=False)
@@ -524,7 +536,7 @@ async def api_knowledge_replace(
         for (idx, _), embedding in zip(leaves, embeddings):
             idx_to_obj[idx].embedding = embedding
 
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="document.replaced", resource_type="document", resource_id=doc_id,
               detail={"filename": filename, "chunk_count": leaf_count})
     db.commit()
@@ -543,7 +555,7 @@ def api_list_questionnaires(
     per_page = min(per_page, 100)
     offset = (page - 1) * per_page
     base = db.query(Questionnaire).filter(
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     )
     total = base.count()
@@ -565,7 +577,7 @@ def api_get_questionnaire(
 ):
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
@@ -576,10 +588,6 @@ def api_get_questionnaire(
         .order_by(Question.row_index)
         .all()
     )
-    # Batch-load assignees to avoid N+1
-    assignee_ids = {q.assigned_to_id for q in questions if q.assigned_to_id}
-    assignees = {u.id: u for u in db.query(User).filter(User.id.in_(assignee_ids)).all()} if assignee_ids else {}
-
     # Batch-load retrieval scores from question_citations junction table
     question_ids = [q.id for q in questions]
     scores_by_question: dict[int, dict[int, float]] = defaultdict(dict)
@@ -594,21 +602,10 @@ def api_get_questionnaire(
         for row in rows:
             scores_by_question[row.question_id][row.chunk_id] = row.retrieval_score
 
-    # Find which cited chunks come from starter documents (one batch query)
-    all_cited_ids = {cid for q in questions for cid in (q.cited_chunk_ids or [])}
-    starter_chunk_ids: set[int] = set()
-    if all_cited_ids:
-        starter_rows = db.execute(
-            select(KnowledgeChunk.id)
-            .join(Document, KnowledgeChunk.document_id == Document.id)
-            .where(KnowledgeChunk.id.in_(all_cited_ids), Document.is_starter == True)
-        ).fetchall()
-        starter_chunk_ids = {row.id for row in starter_rows}
-
     return {
         "questionnaire": _qs_json(qs),
         "questions": [
-            _q_json(q, assignees.get(q.assigned_to_id), scores_by_question.get(q.id), starter_chunk_ids)
+            _q_json(q, scores_by_question.get(q.id))
             for q in questions
         ],
     }
@@ -622,7 +619,7 @@ async def api_generate(
 ):
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
@@ -637,32 +634,40 @@ async def api_generate(
     updated = 0
     conflict_count = 0
     for q in pending:
-        chunks = await retrieve_relevant_chunks(q.question_text, db, org_id=current_user.org_id)
-        result = await generate_answer(q.question_text, chunks)
-        q.draft_answer = result.answer
-        q.short_answer = result.short_answer
-        q.confidence = ConfidenceLevel(result.confidence)
-        q.cited_chunk_ids = result.cited_chunk_ids
-        q.reasoning = result.reasoning
-        q.status = QuestionStatus.generated
-        if not q.category:
-            q.category = await classify_category(q.question_text)
-        _save_citation_scores(db, q.id, chunks, result.cited_chunk_ids)
-        # Consistency check against previously approved answers
+        try:
+            chunks = await retrieve_relevant_chunks(q.question_text, db, workspace_id=current_user.workspace_id, customer_name=qs.customer_name)
+            result = await generate_answer(q.question_text, chunks)
+            q.draft_answer = result.answer
+            q.short_answer = result.short_answer
+            q.confidence = ConfidenceLevel(result.confidence)
+            q.cited_chunk_ids = result.cited_chunk_ids
+            q.reasoning = result.reasoning
+            q.status = QuestionStatus.generated
+            if not q.category:
+                q.category = await classify_category(q.question_text)
+            _save_citation_scores(db, q.id, chunks, result.cited_chunk_ids)
+            log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
+                      action="answer.generated", resource_type="question", resource_id=q.id,
+                      detail={"questionnaire_id": questionnaire_id, "confidence": result.confidence})
+            db.commit()
+            updated += 1
+        except Exception as exc:
+            db.rollback()
+            print(f"[generate] Failed on question {q.id}: {exc}")
+            await asyncio.sleep(6)
+            continue
+
+        # Conflict check runs in its own transaction after the answer is safely committed
         try:
             warning = await check_answer_conflict(
-                q.question_text, result.short_answer or "", db, current_user.org_id
+                q.question_text, result.short_answer or "", db, current_user.workspace_id
             )
-            q.conflict_warning = warning
             if warning:
+                q.conflict_warning = warning
                 conflict_count += 1
+                db.commit()
         except Exception:
-            pass
-        log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
-                  action="answer.generated", resource_type="question", resource_id=q.id,
-                  detail={"questionnaire_id": questionnaire_id, "confidence": result.confidence})
-        db.commit()  # save each answer as it completes
-        updated += 1
+            db.rollback()
         await asyncio.sleep(6)  # 6s gap = ~10 req/min, within free tier limit
 
     if qs.status == QuestionnaireStatus.draft:
@@ -670,7 +675,7 @@ async def api_generate(
 
     # In-app notification for the user who triggered generation
     db.add(Notification(
-        org_id=current_user.org_id,
+        workspace_id=current_user.workspace_id,
         user_id=current_user.id,
         type="generation_complete",
         title=f"Drafts ready — {qs.name}",
@@ -710,7 +715,7 @@ async def api_regenerate_question(
 ):
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
@@ -722,7 +727,7 @@ async def api_regenerate_question(
     if not q:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
-    chunks = await retrieve_relevant_chunks(q.question_text, db, org_id=current_user.org_id)
+    chunks = await retrieve_relevant_chunks(q.question_text, db, workspace_id=current_user.workspace_id, customer_name=qs.customer_name)
     result = await generate_answer(q.question_text, chunks)
     q.draft_answer = result.answer
     q.short_answer = result.short_answer
@@ -736,8 +741,8 @@ async def api_regenerate_question(
 
     score_map = _save_citation_scores(db, q.id, chunks, result.cited_chunk_ids)
     # Negative feedback: reviewer asked for a regen — previous chunks were insufficient
-    record_negative_feedback(q.cited_chunk_ids or [], current_user.org_id, db)
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    record_negative_feedback(q.cited_chunk_ids or [], current_user.workspace_id, db)
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="answer.generated", resource_type="question", resource_id=q.id,
               detail={"questionnaire_id": questionnaire_id, "confidence": result.confidence, "regen": True})
     db.commit()
@@ -748,12 +753,13 @@ async def api_regenerate_question(
 async def api_approve_question(
     questionnaire_id: int,
     question_id: int,
+    make_generic: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
@@ -771,7 +777,7 @@ async def api_approve_question(
     _record_version(db, q, current_user, "approved")
 
     if q.final_answer and q.question_text:
-        doc = _get_approved_doc(db, current_user.org_id)
+        doc = _get_approved_doc(db, current_user.workspace_id)
         chunk_text_val = f"Q: {q.question_text}\nA: {q.final_answer}"
         chunk = KnowledgeChunk(
             document_id=doc.id,
@@ -779,6 +785,7 @@ async def api_approve_question(
             source_section=f"Row {q.row_index}",
             source_type=SourceType.approved_answer,
             text=chunk_text_val,
+            customer_name=None if make_generic else qs.customer_name,
         )
         db.add(chunk)
         db.flush()
@@ -794,7 +801,7 @@ async def api_approve_question(
         doc.chunk_count = (doc.chunk_count or 0) + 1
 
         # Positive feedback: cited chunks that led to an approved answer were useful
-        record_positive_feedback(q.cited_chunk_ids or [], current_user.org_id, db)
+        record_positive_feedback(q.cited_chunk_ids or [], current_user.workspace_id, db)
 
         # Save to answer library so future questionnaires can match against it
         try:
@@ -806,6 +813,7 @@ async def api_approve_question(
             existing = db.query(ApprovedAnswer).filter(
                 ApprovedAnswer.source_question_id == q.id
             ).first()
+            _client_tag = None if make_generic else qs.customer_name
             if existing:
                 existing.answer_text = q.final_answer
                 existing.short_answer = q.short_answer
@@ -813,6 +821,7 @@ async def api_approve_question(
                 existing.confidence_score = conf_score
                 existing.embedding = embs[0]
                 existing.status = "active"
+                existing.customer_name = _client_tag
             else:
                 db.add(ApprovedAnswer(
                     question_text=q.question_text,
@@ -823,7 +832,8 @@ async def api_approve_question(
                     confidence_score=conf_score,
                     embedding=embs[0],
                     source_question_id=q.id,
-                    org_id=current_user.org_id,
+                    workspace_id=current_user.workspace_id,
+                    customer_name=_client_tag,
                 ))
         except Exception:
             pass  # library write failure must not break approval
@@ -835,7 +845,7 @@ async def api_approve_question(
     if remaining == 0:
         qs.status = QuestionnaireStatus.complete
 
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="question.approved", resource_type="question", resource_id=q.id,
               detail={"questionnaire_id": questionnaire_id})
     db.commit()
@@ -851,7 +861,7 @@ def api_reject_question(
 ):
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
@@ -862,11 +872,11 @@ def api_reject_question(
     ).first()
     if not q:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    # If previously approved, remove the knowledge chunk so bad answers don't pollute future RAG
+    # If previously approved, remove the knowledge chunk and archive the answer library entry
     if q.status == QuestionStatus.approved and q.final_answer:
         approved_doc = db.query(Document).filter(
             Document.filename == "Approved Answers",
-            Document.org_id == current_user.org_id,
+            Document.workspace_id == current_user.workspace_id,
         ).first()
         if approved_doc:
             stale = db.query(KnowledgeChunk).filter(
@@ -878,62 +888,22 @@ def api_reject_question(
                 db.delete(chunk)
             approved_doc.chunk_count = max(0, (approved_doc.chunk_count or 0) - len(stale))
 
+        stale_aa = db.query(ApprovedAnswer).filter(
+            ApprovedAnswer.source_question_id == q.id,
+        ).first()
+        if stale_aa:
+            stale_aa.status = "archived"
+
     q.status = QuestionStatus.rejected
     q.final_answer = None
     _record_version(db, q, current_user, "rejected")
     # Negative feedback: cited chunks that led to a rejected answer were unhelpful
-    record_negative_feedback(q.cited_chunk_ids or [], current_user.org_id, db)
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    record_negative_feedback(q.cited_chunk_ids or [], current_user.workspace_id, db)
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="question.rejected", resource_type="question", resource_id=q.id,
               detail={"questionnaire_id": questionnaire_id})
     db.commit()
     return _q_json(q)
-
-
-@router.post("/questionnaires/{questionnaire_id}/bulk-approve-high")
-def api_bulk_approve_high(
-    questionnaire_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    qs = db.query(Questionnaire).filter(
-        Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
-        Questionnaire.deleted_at == None,
-    ).first()
-    if not qs:
-        return JSONResponse({"error": "Not found"}, status_code=404)
-    questions = db.query(Question).filter(
-        Question.questionnaire_id == questionnaire_id,
-        Question.status == QuestionStatus.generated,
-        Question.confidence == ConfidenceLevel.high,
-    ).all()
-    count = 0
-    for q in questions:
-        q.final_answer = q.draft_answer
-        q.status = QuestionStatus.approved
-        if q.final_answer and q.question_text:
-            doc = _get_approved_doc(db, current_user.org_id)
-            db.add(KnowledgeChunk(
-                document_id=doc.id,
-                source_document="Approved Answers",
-                source_section=f"Row {q.row_index}",
-                source_type=SourceType.approved_answer,
-                text=f"Q: {q.question_text}\nA: {q.final_answer}",
-            ))
-            doc.chunk_count = (doc.chunk_count or 0) + 1
-        count += 1
-    remaining = db.query(Question).filter(
-        Question.questionnaire_id == questionnaire_id,
-        Question.status.notin_([QuestionStatus.approved, QuestionStatus.rejected])
-    ).count()
-    if remaining == 0:
-        qs.status = QuestionnaireStatus.complete
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
-              action="question.bulk_approved", resource_type="questionnaire", resource_id=questionnaire_id,
-              detail={"count": count})
-    db.commit()
-    return {"approved": count}
 
 
 @router.patch("/questionnaires/{questionnaire_id}/questions/{question_id}")
@@ -946,7 +916,7 @@ def api_update_question(
 ):
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
@@ -960,7 +930,7 @@ def api_update_question(
     if draft_answer != (q.draft_answer or ""):
         q.draft_answer = draft_answer
         _record_version(db, q, current_user, "edited")
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="question.edited", resource_type="question", resource_id=q.id,
               detail={"questionnaire_id": questionnaire_id})
     db.commit()
@@ -975,15 +945,15 @@ def api_export_questionnaire(
 ):
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
-    white_label = bool(org and org.white_label_export)
+    workspace = db.query(Workspace).filter(Workspace.id == current_user.workspace_id).first()
+    white_label = bool(workspace and workspace.white_label_export)
     file_bytes, file_ext = export_questionnaire_to_xlsx(questionnaire_id, db, white_label=white_label)
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="questionnaire.exported", resource_type="questionnaire", resource_id=questionnaire_id,
               detail={"name": qs.name})
     db.commit()
@@ -1012,14 +982,14 @@ def api_delete_questionnaire(
     _require_role(current_user, "owner", "admin")
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
         return JSONResponse({"error": "Not found"}, status_code=404)
     from datetime import datetime, timezone
     qs.deleted_at = datetime.now(timezone.utc)
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="questionnaire.deleted", resource_type="questionnaire", resource_id=questionnaire_id,
               detail={"name": qs.name})
     db.commit()
@@ -1036,13 +1006,13 @@ def api_trash(
     _require_role(current_user, "owner", "admin")
     questionnaires = (
         db.query(Questionnaire)
-        .filter(Questionnaire.org_id == current_user.org_id, Questionnaire.deleted_at != None)
+        .filter(Questionnaire.workspace_id == current_user.workspace_id, Questionnaire.deleted_at != None)
         .order_by(Questionnaire.deleted_at.desc())
         .all()
     )
     documents = (
         db.query(Document)
-        .filter(Document.org_id == current_user.org_id, Document.deleted_at != None)
+        .filter(Document.workspace_id == current_user.workspace_id, Document.deleted_at != None)
         .order_by(Document.deleted_at.desc())
         .all()
     )
@@ -1067,22 +1037,22 @@ def api_restore_questionnaire(
     _require_role(current_user, "owner", "admin")
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at != None,
     ).first()
     if not qs:
         return JSONResponse({"error": "Not found in trash"}, status_code=404)
 
     qs.deleted_at = None
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="questionnaire.restored", resource_type="questionnaire", resource_id=questionnaire_id,
               detail={"name": qs.name})
     db.commit()
 
-    # Notify the org owner so they can investigate if this was unexpected
+    # Notify the workspace owner so they can investigate if this was unexpected
     from app.services.jobs import enqueue
-    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
-    owner = db.query(User).filter(User.org_id == current_user.org_id, User.role == "owner").first()
+    workspace = db.query(Workspace).filter(Workspace.id == current_user.workspace_id).first()
+    owner = db.query(User).filter(User.workspace_id == current_user.workspace_id, User.role == "owner").first()
     if owner and owner.email != current_user.email:
         enqueue("send_restore_notification", {
             "owner_email": owner.email,
@@ -1103,20 +1073,20 @@ def api_restore_document(
     _require_role(current_user, "owner", "admin")
     doc = db.query(Document).filter(
         Document.id == doc_id,
-        Document.org_id == current_user.org_id,
+        Document.workspace_id == current_user.workspace_id,
         Document.deleted_at != None,
     ).first()
     if not doc:
         return JSONResponse({"error": "Not found in trash"}, status_code=404)
 
     doc.deleted_at = None
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="document.restored", resource_type="document", resource_id=doc_id,
               detail={"filename": doc.filename})
     db.commit()
 
     from app.services.jobs import enqueue
-    owner = db.query(User).filter(User.org_id == current_user.org_id, User.role == "owner").first()
+    owner = db.query(User).filter(User.workspace_id == current_user.workspace_id, User.role == "owner").first()
     if owner and owner.email != current_user.email:
         enqueue("send_restore_notification", {
             "owner_email": owner.email,
@@ -1137,7 +1107,7 @@ def api_purge_questionnaire(
     _require_role(current_user, "owner")
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at != None,
     ).first()
     if not qs:
@@ -1153,7 +1123,7 @@ def api_purge_questionnaire(
         db.query(LLMCall).filter(LLMCall.question_id.in_(question_ids)).delete(synchronize_session=False)
         db.query(Question).filter(Question.questionnaire_id == questionnaire_id).delete(synchronize_session=False)
     db.delete(qs)
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="questionnaire.purged", resource_type="questionnaire", resource_id=questionnaire_id,
               detail={"name": name})
     db.commit()
@@ -1169,14 +1139,14 @@ def api_purge_document(
     _require_role(current_user, "owner")
     doc = db.query(Document).filter(
         Document.id == doc_id,
-        Document.org_id == current_user.org_id,
+        Document.workspace_id == current_user.workspace_id,
         Document.deleted_at != None,
     ).first()
     if not doc:
         return JSONResponse({"error": "Not found in trash"}, status_code=404)
     filename = doc.filename
     db.delete(doc)
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="document.purged", resource_type="document", resource_id=doc_id,
               detail={"filename": filename})
     db.commit()
@@ -1216,7 +1186,7 @@ def api_list_knowledge(
     per_page = min(per_page, 100)
     offset = (page - 1) * per_page
     base = db.query(Document).filter(
-        Document.org_id == current_user.org_id,
+        Document.workspace_id == current_user.workspace_id,
         Document.deleted_at == None,
     )
     total = base.count()
@@ -1229,7 +1199,6 @@ def api_list_knowledge(
             "chunk_count": d.chunk_count,
             "created_at": d.created_at.isoformat(),
             "content_updated_at": d.content_updated_at.isoformat() if d.content_updated_at else d.created_at.isoformat(),
-            "is_starter": d.is_starter,
         }
         for d in docs
     ]
@@ -1251,13 +1220,28 @@ def api_delete_knowledge(
     _require_role(current_user, "owner", "admin")
     doc = db.query(Document).filter(
         Document.id == doc_id,
-        Document.org_id == current_user.org_id,
+        Document.workspace_id == current_user.workspace_id,
     ).first()
     if not doc:
         return JSONResponse({"error": "Not found"}, status_code=404)
     from datetime import datetime, timezone
+
+    # Mark approved answers that cited chunks from this document as stale
+    chunk_ids = [
+        r[0] for r in db.query(KnowledgeChunk.id)
+        .filter(KnowledgeChunk.document_id == doc_id).all()
+    ]
+    if chunk_ids:
+        stale_answers = db.query(ApprovedAnswer).filter(
+            ApprovedAnswer.workspace_id == current_user.workspace_id,
+            ApprovedAnswer.status == "active",
+        ).all()
+        for a in stale_answers:
+            if a.cited_chunk_ids and any(cid in chunk_ids for cid in a.cited_chunk_ids):
+                a.is_stale = True
+
     doc.deleted_at = datetime.now(timezone.utc)
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="document.deleted", resource_type="document", resource_id=doc_id,
               detail={"filename": doc.filename})
     db.commit()
@@ -1274,7 +1258,7 @@ def api_answer_library(
     db: Session = Depends(get_db),
 ):
     query = db.query(ApprovedAnswer).filter(
-        ApprovedAnswer.org_id == current_user.org_id,
+        ApprovedAnswer.workspace_id == current_user.workspace_id,
         ApprovedAnswer.status == "active",
     )
     if q:
@@ -1290,7 +1274,7 @@ def api_answer_library(
     cats = (
         db.query(ApprovedAnswer.answer_category, func.count(ApprovedAnswer.id))
         .filter(
-            ApprovedAnswer.org_id == current_user.org_id,
+            ApprovedAnswer.workspace_id == current_user.workspace_id,
             ApprovedAnswer.answer_category != None,
             ApprovedAnswer.status == "active",
         )
@@ -1323,15 +1307,58 @@ def api_answer_library(
             "source_questionnaire_id": src["id"] if src else None,
             "source_questionnaire_name": src["name"] if src else None,
             "source_customer_name": src["customer_name"] if src else None,
+            "is_stale": bool(a.is_stale),
+            "customer_name": a.customer_name,
         }
 
     return {
         "answers": [_answer_json(a) for a in answers],
         "categories": [{"name": c, "count": n} for c, n in cats],
-        "total": db.query(ApprovedAnswer).filter(ApprovedAnswer.org_id == current_user.org_id, ApprovedAnswer.status == "active").count(),
+        "total": db.query(ApprovedAnswer).filter(ApprovedAnswer.workspace_id == current_user.workspace_id, ApprovedAnswer.status == "active").count(),
         "total_reuses": db.query(func.sum(ApprovedAnswer.times_reused)).filter(
-            ApprovedAnswer.org_id == current_user.org_id, ApprovedAnswer.status == "active").scalar() or 0,
+            ApprovedAnswer.workspace_id == current_user.workspace_id, ApprovedAnswer.status == "active").scalar() or 0,
     }
+
+
+@router.post("/answers/library/{answer_id}/mark-fresh")
+def api_mark_answer_fresh(
+    answer_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    answer = db.query(ApprovedAnswer).filter(
+        ApprovedAnswer.id == answer_id,
+        ApprovedAnswer.workspace_id == current_user.workspace_id,
+    ).first()
+    if not answer:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    answer.is_stale = False
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/answers/library/{answer_id}/make-generic")
+def api_make_answer_generic(
+    answer_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    answer = db.query(ApprovedAnswer).filter(
+        ApprovedAnswer.id == answer_id,
+        ApprovedAnswer.workspace_id == current_user.workspace_id,
+    ).first()
+    if not answer:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    answer.customer_name = None
+    # Also clear customer_name on the corresponding KnowledgeChunk
+    if answer.source_question_id:
+        db.query(KnowledgeChunk).filter(
+            KnowledgeChunk.source_type == SourceType.approved_answer,
+            KnowledgeChunk.source_section == f"Row {db.query(Question.row_index).filter(Question.id == answer.source_question_id).scalar()}",
+            KnowledgeChunk.customer_name != None,
+        ).update({"customer_name": None}, synchronize_session=False)
+    db.commit()
+    return {"status": "ok"}
 
 
 @router.post("/answers/library/{answer_id}/archive")
@@ -1342,12 +1369,31 @@ def api_archive_answer(
 ):
     answer = db.query(ApprovedAnswer).filter(
         ApprovedAnswer.id == answer_id,
-        ApprovedAnswer.org_id == current_user.org_id,
+        ApprovedAnswer.workspace_id == current_user.workspace_id,
     ).first()
     if not answer:
         return JSONResponse({"error": "Not found"}, status_code=404)
     answer.status = "archived"
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
+
+    # Also remove the corresponding knowledge chunk so it no longer pollutes RAG
+    if answer.source_question_id is not None:
+        approved_doc = db.query(Document).filter(
+            Document.filename == "Approved Answers",
+            Document.workspace_id == current_user.workspace_id,
+        ).first()
+        if approved_doc:
+            source_q = db.query(Question).filter(Question.id == answer.source_question_id).first()
+            if source_q:
+                stale = db.query(KnowledgeChunk).filter(
+                    KnowledgeChunk.document_id == approved_doc.id,
+                    KnowledgeChunk.source_type == SourceType.approved_answer,
+                    KnowledgeChunk.source_section == f"Row {source_q.row_index}",
+                ).all()
+                for chunk in stale:
+                    db.delete(chunk)
+                approved_doc.chunk_count = max(0, (approved_doc.chunk_count or 0) - len(stale))
+
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="answer.archived", resource_type="approved_answer", resource_id=answer_id,
               detail={"question_text": answer.question_text[:120]})
     db.commit()
@@ -1362,7 +1408,7 @@ def api_list_templates(
     db: Session = Depends(get_db),
 ):
     ts = db.query(QuestionnaireTemplate).filter(
-        QuestionnaireTemplate.org_id == current_user.org_id
+        QuestionnaireTemplate.workspace_id == current_user.workspace_id
     ).order_by(QuestionnaireTemplate.times_used.desc()).all()
     return [
         {
@@ -1388,7 +1434,7 @@ def api_delete_template(
     _require_role(current_user, "owner", "admin")
     t = db.query(QuestionnaireTemplate).filter(
         QuestionnaireTemplate.id == template_id,
-        QuestionnaireTemplate.org_id == current_user.org_id,
+        QuestionnaireTemplate.workspace_id == current_user.workspace_id,
     ).first()
     if not t:
         return JSONResponse({"error": "Not found"}, status_code=404)
@@ -1406,11 +1452,11 @@ def api_usage(
 ):
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
-    org_id = current_user.org_id
+    workspace_id = current_user.workspace_id
 
     def month_filter(q):
         return q.filter(
-            LLMCall.org_id == org_id,
+            LLMCall.workspace_id == workspace_id,
             func.extract("year", LLMCall.created_at) == now.year,
             func.extract("month", LLMCall.created_at) == now.month,
         )
@@ -1420,10 +1466,10 @@ def api_usage(
     month_output = month_filter(db.query(func.sum(LLMCall.output_tokens))).scalar() or 0
     month_cost   = round(month_filter(db.query(func.sum(LLMCall.cost_estimate))).scalar() or 0.0, 6)
 
-    total_calls  = db.query(LLMCall).filter(LLMCall.org_id == org_id).count()
-    total_input  = db.query(func.sum(LLMCall.input_tokens)).filter(LLMCall.org_id == org_id).scalar() or 0
-    total_output = db.query(func.sum(LLMCall.output_tokens)).filter(LLMCall.org_id == org_id).scalar() or 0
-    total_cost   = round(db.query(func.sum(LLMCall.cost_estimate)).filter(LLMCall.org_id == org_id).scalar() or 0.0, 6)
+    total_calls  = db.query(LLMCall).filter(LLMCall.workspace_id == workspace_id).count()
+    total_input  = db.query(func.sum(LLMCall.input_tokens)).filter(LLMCall.workspace_id == workspace_id).scalar() or 0
+    total_output = db.query(func.sum(LLMCall.output_tokens)).filter(LLMCall.workspace_id == workspace_id).scalar() or 0
+    total_cost   = round(db.query(func.sum(LLMCall.cost_estimate)).filter(LLMCall.workspace_id == workspace_id).scalar() or 0.0, 6)
 
     per_q_rows = (
         db.query(
@@ -1434,7 +1480,7 @@ def api_usage(
             func.sum(LLMCall.cost_estimate).label("cost"),
         )
         .join(LLMCall, LLMCall.questionnaire_id == Questionnaire.id)
-        .filter(Questionnaire.org_id == org_id)
+        .filter(Questionnaire.workspace_id == workspace_id)
         .group_by(Questionnaire.id, Questionnaire.name)
         .all()
     )
@@ -1459,24 +1505,23 @@ def api_usage(
     }
 
 
-# ── assignment ────────────────────────────────────────────────────────────────
+# ── flag + note ───────────────────────────────────────────────────────────────
 
-class AssignRequest(BaseModel):
-    user_id: int | None  # None = unassign
+class FlagRequest(BaseModel):
+    note: str | None  # None or empty string = clear flag
 
 
-@router.post("/questionnaires/{questionnaire_id}/questions/{question_id}/assign")
-def api_assign_question(
+@router.patch("/questionnaires/{questionnaire_id}/questions/{question_id}/flag")
+def api_flag_question(
     questionnaire_id: int,
     question_id: int,
-    req: AssignRequest,
+    req: FlagRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _require_role(current_user, "owner", "admin")
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
@@ -1488,40 +1533,9 @@ def api_assign_question(
     if not q:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
-    assignee = None
-    if req.user_id:
-        assignee = db.query(User).filter(
-            User.id == req.user_id,
-            User.org_id == current_user.org_id,
-            User.is_active == True,
-        ).first()
-        if not assignee:
-            return JSONResponse({"error": "User not found"}, status_code=404)
-
-    q.assigned_to_id = req.user_id
-    log_event(db, org_id=current_user.org_id, user_id=current_user.id, user_email=current_user.email,
-              action="question.assigned", resource_type="question", resource_id=q.id,
-              detail={"questionnaire_id": questionnaire_id,
-                      "assigned_to": assignee.email if assignee else None})
+    q.flag_note = req.note.strip() if req.note and req.note.strip() else None
     db.commit()
-
-    # Fire-and-forget email — don't fail the request if email fails
-    if assignee and assignee.id != current_user.id:
-        from app.config import get_settings
-        url = f"{get_settings().app_url}/questionnaires/{questionnaire_id}"
-        try:
-            send_question_assigned(
-                to_email=assignee.email,
-                assignee_name=assignee.full_name or "",
-                assignor_name=current_user.full_name or current_user.email,
-                questionnaire_name=qs.name,
-                question_text=q.question_text,
-                questionnaire_url=url,
-            )
-        except Exception as e:
-            print(f"[email] Failed to send assignment notification: {e}")
-
-    return _q_json(q, assignee)
+    return _q_json(q)
 
 
 # ── comments ──────────────────────────────────────────────────────────────────
@@ -1539,7 +1553,7 @@ def api_list_comments(
 ):
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
@@ -1547,7 +1561,7 @@ def api_list_comments(
     comments = (
         db.query(QuestionComment)
         .filter(QuestionComment.question_id == question_id,
-                QuestionComment.org_id == current_user.org_id)
+                QuestionComment.workspace_id == current_user.workspace_id)
         .order_by(QuestionComment.created_at.asc())
         .all()
     )
@@ -1566,7 +1580,7 @@ def api_post_comment(
         return JSONResponse({"error": "Comment cannot be empty"}, status_code=400)
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
@@ -1581,7 +1595,7 @@ def api_post_comment(
     comment = QuestionComment(
         question_id=question_id,
         questionnaire_id=questionnaire_id,
-        org_id=current_user.org_id,
+        workspace_id=current_user.workspace_id,
         user_id=current_user.id,
         user_email=current_user.email,
         user_name=current_user.full_name or current_user.email,
@@ -1603,7 +1617,7 @@ def api_delete_comment(
 ):
     comment = db.query(QuestionComment).filter(
         QuestionComment.id == comment_id,
-        QuestionComment.org_id == current_user.org_id,
+        QuestionComment.workspace_id == current_user.workspace_id,
     ).first()
     if not comment:
         return JSONResponse({"error": "Not found"}, status_code=404)
@@ -1615,38 +1629,6 @@ def api_delete_comment(
     return {"status": "deleted"}
 
 
-# ── my assignments ─────────────────────────────────────────────────────────────
-
-@router.get("/assignments")
-def api_my_assignments(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    questions = (
-        db.query(Question)
-        .join(Questionnaire, Questionnaire.id == Question.questionnaire_id)
-        .filter(
-            Question.assigned_to_id == current_user.id,
-            Questionnaire.org_id == current_user.org_id,
-            Questionnaire.deleted_at == None,
-        )
-        .order_by(Question.created_at.desc())
-        .all()
-    )
-    qs_ids = {q.questionnaire_id for q in questions}
-    qs_map = {qs.id: qs for qs in db.query(Questionnaire).filter(Questionnaire.id.in_(qs_ids)).all()} if qs_ids else {}
-
-    return [
-        {
-            **_q_json(q, current_user),
-            "questionnaire_id": q.questionnaire_id,
-            "questionnaire_name": qs_map[q.questionnaire_id].name if q.questionnaire_id in qs_map else "",
-            "customer_name": qs_map[q.questionnaire_id].customer_name if q.questionnaire_id in qs_map else "",
-        }
-        for q in questions
-    ]
-
-
 # ── KB health / answer confidence analytics ───────────────────────────────────
 
 @router.get("/kb-health")
@@ -1656,14 +1638,14 @@ def api_kb_health(
 ):
     from app.services.answer_library import detect_category
 
-    org_id = current_user.org_id
+    workspace_id = current_user.workspace_id
 
     # Load all generated/approved/rejected questions for this org
     questions = (
         db.query(Question)
         .join(Questionnaire, Questionnaire.id == Question.questionnaire_id)
         .filter(
-            Questionnaire.org_id == org_id,
+            Questionnaire.workspace_id == workspace_id,
             Question.status.in_([QuestionStatus.generated, QuestionStatus.approved, QuestionStatus.rejected]),
         )
         .all()
@@ -1785,7 +1767,7 @@ async def api_rag_eval(
     _require_role(current_user, "owner", "admin")
     from app.services.evaluation import evaluate_retrieval
     report = await evaluate_retrieval(
-        org_id=current_user.org_id,
+        workspace_id=current_user.workspace_id,
         db=db,
         top_k=top_k,
         sample_size=sample_size,
@@ -1817,7 +1799,7 @@ def api_audit_log(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    query = db.query(AuditLog).filter(AuditLog.org_id == current_user.org_id)
+    query = db.query(AuditLog).filter(AuditLog.workspace_id == current_user.workspace_id)
     if action:
         query = query.filter(AuditLog.action == action)
     events = query.order_by(AuditLog.created_at.desc()).limit(min(limit, 500)).all()
@@ -1907,7 +1889,7 @@ def api_get_share_token(
 ):
     qs = db.query(Questionnaire).filter(
         Questionnaire.id == questionnaire_id,
-        Questionnaire.org_id == current_user.org_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
@@ -1984,33 +1966,39 @@ def api_question_history(
 
 
 # ---------------------------------------------------------------------------
-# Org settings
+# Workspace settings
 # ---------------------------------------------------------------------------
 
-@router.get("/org/settings")
-def api_get_org_settings(
+@router.get("/workspace/settings")
+def api_get_workspace_settings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
-    return {"white_label_export": bool(org.white_label_export) if org else False}
+    workspace = db.query(Workspace).filter(Workspace.id == current_user.workspace_id).first()
+    if not workspace:
+        return {"white_label_export": False}
+    return {"white_label_export": bool(workspace.white_label_export)}
 
 
-class OrgSettingsBody(BaseModel):
-    white_label_export: bool
+class WorkspaceSettingsBody(BaseModel):
+    white_label_export: bool | None = None
 
 
-@router.patch("/org/settings")
-def api_update_org_settings(
-    body: OrgSettingsBody,
+@router.patch("/workspace/settings")
+def api_update_workspace_settings(
+    body: WorkspaceSettingsBody,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if current_user.role != "owner":
-        return JSONResponse({"error": "Only the workspace owner can change org settings."}, status_code=403)
-    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
-    if not org:
+        return JSONResponse({"error": "Only the workspace owner can change workspace settings."}, status_code=403)
+    workspace = db.query(Workspace).filter(Workspace.id == current_user.workspace_id).first()
+    if not workspace:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    org.white_label_export = body.white_label_export
+    if body.white_label_export is not None:
+        workspace.white_label_export = body.white_label_export
     db.commit()
-    return {"white_label_export": org.white_label_export}
+    return {"white_label_export": workspace.white_label_export}
+
+
+

@@ -18,7 +18,6 @@ import Team from './pages/Team'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import ChangePassword from './pages/ChangePassword'
-import MyAssignments from './pages/MyAssignments'
 import KBHealth from './pages/KBHealth'
 import VerifyEmail from './pages/VerifyEmail'
 import Trash from './pages/Trash'
@@ -51,7 +50,6 @@ export default function App() {
             <Route path="questionnaires/upload" element={<UploadQuestionnaire />} />
             <Route path="questionnaires/templates" element={<Templates />} />
             <Route path="questionnaires/:id" element={<QuestionnaireDetail />} />
-            <Route path="assignments" element={<MyAssignments />} />
             <Route path="knowledge" element={<KnowledgeBase />} />
             <Route path="knowledge/health" element={<KBHealth />} />
             <Route path="knowledge/upload" element={<UploadKnowledge />} />

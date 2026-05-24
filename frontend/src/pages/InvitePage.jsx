@@ -9,12 +9,12 @@ export default function InvitePage() {
   const { t } = useTheme()
   const nav = useNavigate()
   const [status, setStatus] = useState('loading') // loading | valid | invalid
-  const [orgName, setOrgName] = useState('')
+  const [workspaceName, setWorkspaceName] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
     api.validateInvite(token)
-      .then(d => { setOrgName(d.org_name); setStatus('valid') })
+      .then(d => { setWorkspaceName(d.workspace_name); setStatus('valid') })
       .catch(e => { setError(e.message); setStatus('invalid') })
   }, [token])
 
@@ -49,7 +49,7 @@ export default function InvitePage() {
               </div>
               <h1 className="text-xl font-bold mb-1" style={{ color: t.text }}>You're invited</h1>
               <p className="text-sm mb-6" style={{ color: t.text2 }}>
-                Join <strong>{orgName}</strong> on Greenlight
+                Join <strong>{workspaceName}</strong> on Greenlight
               </p>
               <button
                 onClick={() => nav(`/register?token=${token}`)}

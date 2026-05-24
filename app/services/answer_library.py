@@ -157,7 +157,7 @@ async def check_answer_conflict(
     question_text: str,
     new_short_answer: str,
     db: Session,
-    org_id: int,
+    workspace_id: int,
 ) -> str | None:
     """Return a warning string if a similar approved answer has a conflicting short_answer, else None.
 
@@ -182,14 +182,14 @@ async def check_answer_conflict(
             FROM   approved_answers
             WHERE  embedding IS NOT NULL
               AND  status    = 'active'
-              AND  org_id    = :org_id
+              AND  workspace_id    = :workspace_id
               AND  short_answer IS NOT NULL
               AND  short_answer != 'N/A'
               AND  short_answer != :new_sa
             ORDER  BY embedding <=> :vec::vector
             LIMIT  1
         """),
-        {"vec": vec_str, "org_id": org_id, "new_sa": new_short_answer},
+        {"vec": vec_str, "workspace_id": workspace_id, "new_sa": new_short_answer},
     ).fetchall()
 
     if not rows:

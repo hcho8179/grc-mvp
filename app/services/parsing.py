@@ -100,12 +100,15 @@ def parse_xlsx_questionnaire_preview(file_bytes: bytes) -> dict:
     import openpyxl
 
     try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     except Exception as exc:
         raise ValueError(f"Could not read XLSX: {exc}") from exc
 
     ws = wb.active
     sheet_name = ws.title
+
+    hidden_rows = {r for r, rd in ws.row_dimensions.items() if rd.hidden}
+
     rows = list(ws.iter_rows(values_only=True))
     wb.close()
 
@@ -116,7 +119,10 @@ def parse_xlsx_questionnaire_preview(file_bytes: bytes) -> dict:
         str(cell) if cell is not None else f"Column {i + 1}"
         for i, cell in enumerate(rows[0])
     ]
-    data_rows = rows[1:]
+    data_rows = [
+        row for i, row in enumerate(rows[1:], start=2)
+        if i not in hidden_rows
+    ]
     sample = [
         [str(cell) if cell is not None else "" for cell in row]
         for row in data_rows[:5]
@@ -138,16 +144,24 @@ def parse_xlsx_questionnaire_full(
 
     Returns list of {"row_index": int, "question": str, "existing_answer": str | None}.
     row_index is 0-based relative to the first data row (after header).
-    Rows where the question cell is empty or whitespace are skipped.
+    Rows where the question cell is empty, whitespace, or hidden are skipped.
     """
     import openpyxl
 
     try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+        # Must load without read_only to access row_dimensions (hidden row detection)
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     except Exception as exc:
         raise ValueError(f"Could not read XLSX: {exc}") from exc
 
     ws = wb.active
+
+    # Build set of hidden row numbers (1-based)
+    hidden_rows = {
+        r for r, rd in ws.row_dimensions.items()
+        if rd.hidden
+    }
+
     rows = list(ws.iter_rows(values_only=True))
     wb.close()
 
@@ -156,6 +170,9 @@ def parse_xlsx_questionnaire_full(
 
     results: list[dict] = []
     for idx, row in enumerate(rows[1:]):  # skip header; idx = 0-based data row index
+        xlsx_row = idx + 2  # 1-based row number in the sheet (header is row 1)
+        if xlsx_row in hidden_rows:
+            continue
         if len(row) <= question_col:
             continue
         question = str(row[question_col]).strip() if row[question_col] is not None else ""

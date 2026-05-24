@@ -55,11 +55,10 @@ export const api = {
   getQuestionnaires:    (page = 1)      => get(`/questionnaires?page=${page}&per_page=20`),
   getQuestionnaire:     (id)            => get(`/questionnaires/${id}`),
   generateAnswers:      (id)            => post(`/questionnaires/${id}/generate`),
-  approveQuestion:      (qId, qId2)     => post(`/questionnaires/${qId}/questions/${qId2}/approve`),
+  approveQuestion:      (qId, qId2, makeGeneric = false) => post(`/questionnaires/${qId}/questions/${qId2}/approve${makeGeneric ? '?make_generic=true' : ''}`),
   rejectQuestion:       (qId, qId2)     => post(`/questionnaires/${qId}/questions/${qId2}/reject`),
   regenerateQuestion:   (qId, qId2)     => post(`/questionnaires/${qId}/questions/${qId2}/regenerate`),
-  bulkApproveHigh:      (id)            => post(`/questionnaires/${id}/bulk-approve-high`),
-  updateQuestion:       (qId, qId2, answer) =>
+updateQuestion:       (qId, qId2, answer) =>
     patch(`/questionnaires/${qId}/questions/${qId2}`, { draft_answer: answer }),
   deleteQuestionnaire:  (id)            => post(`/questionnaires/${id}/delete`),
 
@@ -83,6 +82,8 @@ export const api = {
   getAnswerLibrary: (q = '', category = '') =>
     get(`/answers/library?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}`),
   archiveAnswer: (id) => post(`/answers/library/${id}/archive`, {}),
+  markAnswerFresh: (id) => post(`/answers/library/${id}/mark-fresh`, {}),
+  makeAnswerGeneric: (id) => post(`/answers/library/${id}/make-generic`, {}),
 
   // Templates
   getTemplates:    ()    => get('/templates'),
@@ -95,18 +96,19 @@ export const api = {
   getAuditLog: (action = '') =>
     get(`/audit${action ? `?action=${encodeURIComponent(action)}` : ''}`),
 
-  // Assignment
-  assignQuestion: (qsId, qId, userId) =>
-    post(`/questionnaires/${qsId}/questions/${qId}/assign`, { user_id: userId }),
+  // Flag + note
+  flagQuestion: (qsId, qId, note) =>
+    fetch(`/api/questionnaires/${qsId}/questions/${qId}/flag`, {
+      ...OPTS, method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note || null }),
+    }).then(r => r.json()),
 
   // Comments
   getComments:   (qsId, qId)        => get(`/questionnaires/${qsId}/questions/${qId}/comments`),
   postComment:   (qsId, qId, body)  => post(`/questionnaires/${qsId}/questions/${qId}/comments`, { body }),
   deleteComment: (qsId, qId, cId)   =>
     fetch(`/api/questionnaires/${qsId}/questions/${qId}/comments/${cId}`, { ...OPTS, method: 'DELETE' }).then(r => r.json()),
-
-  // My Assignments
-  getMyAssignments: () => get('/assignments'),
 
   // KB Health
   getKBHealth: () => get('/kb-health'),
@@ -144,9 +146,9 @@ export const api = {
   // Answer version history
   getQuestionHistory: (qsId, qId) => get(`/questionnaires/${qsId}/questions/${qId}/history`),
 
-  // Org settings
-  getOrgSettings:    ()       => get('/org/settings'),
-  updateOrgSettings: (data)   => fetch('/api/org/settings', {
+  // Workspace settings
+  getWorkspaceSettings:    ()       => get('/workspace/settings'),
+  updateWorkspaceSettings: (data)   => fetch('/api/workspace/settings', {
     ...OPTS,
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
