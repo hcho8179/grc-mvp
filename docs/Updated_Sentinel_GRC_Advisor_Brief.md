@@ -267,7 +267,7 @@ Since this is a security product, I want to be transparent about how the tool it
 - Password reset via time-limited email token
 
 **Data protection**
-- Uploaded files (Excel questionnaires, policy documents) are stored in S3-compatible object storage — not in the database
+- Uploaded files (Excel questionnaires, policy documents) are stored in S3-compatible object storage when configured; local/dev deployments fall back to database blobs
 - All data is scoped to the workspace at the database query level — every query is filtered by `workspace_id`, making cross-tenant data access structurally impossible without a deliberate application bypass
 - For consulting firms managing multiple clients: all clients share one workspace but are isolated by `customer_name` at the answer retrieval level. The RAG pipeline SQL filters approved answers so that only generic answers and the current client's answers are ever retrieved — other clients' answers are structurally invisible, not just hidden in the UI
 - Soft deletes only — data is never permanently destroyed without explicit action
@@ -281,7 +281,7 @@ Since this is a security product, I want to be transparent about how the tool it
 - Security headers on every response: Content Security Policy, X-Frame-Options, Referrer-Policy, Permissions-Policy
 - HTTPS-only mode with HSTS when deployed to production
 - CORS restricted to the configured frontend domain only
-- File uploads: Excel files only, 20MB maximum size limit
+- File uploads: questionnaires accept XLSX, DOCX, PDF; knowledge base documents accept PDF and DOCX; 20MB maximum size limit
 - All actions written to an immutable audit log
 
 **Retrieval quality (RAG)**
@@ -306,7 +306,6 @@ The engine that finds the right policy content for each question uses a multi-la
 **Current limitations**
 - **Single active sheet only** — the questionnaire uploader reads the first (active) sheet of an Excel file. Questionnaires spread across multiple tabs are not yet supported (on the roadmap)
 - **Sequential generation per workspace** — answer generation runs one questionnaire at a time within a workspace. For a solo consultant this is invisible; for a busy team where multiple members click Generate simultaneously, jobs queue up. Future fix is a dedicated task queue to run them in parallel
-- **No stale answer detection** — if you replace a policy document in the knowledge base, approved answers that were generated from the old version are not automatically flagged as potentially outdated. Reviewers must manually check the answer library after a major policy update
 - **No deadline or SLA tracking** — questionnaires have no due date field. There is no built-in reminder if a questionnaire has been sitting in draft for too long
 - **No compliance framework mapping** — questions cannot yet be tagged to specific controls (e.g. ISO 27001 Annex A, Essential Eight maturity levels). Mapping is manual
 
