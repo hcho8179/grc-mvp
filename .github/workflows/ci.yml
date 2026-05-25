@@ -46,6 +46,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          python -m pip install slowapi
           python -m pip install ".[dev]"
           python -c "import slowapi, fastapi, sqlalchemy; print('core imports OK')"
 
