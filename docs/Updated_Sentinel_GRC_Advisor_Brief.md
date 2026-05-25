@@ -184,7 +184,7 @@ Archiving an answer from the library also removes it from the retrieval index �
 Deleted questionnaires and documents go to a trash bin rather than being permanently removed. Owners and admins can restore them. Nothing is lost by accident.
 
 **Audit log**
-Every action is logged — who uploaded what, who approved which answer, who exported, who assigned a question to whom, and when. Full trail for compliance purposes.
+Every action is logged — who uploaded what, who approved which answer, who exported, and when. Full trail for compliance purposes.
 
 **Dashboard**
 Overview of all questionnaires, total questions answered, approval rate, average confidence score, and estimated time saved.
@@ -193,7 +193,7 @@ Overview of all questionnaires, total questions answered, approval rate, average
 Owners can invite team members by email. Three roles:
 - **Owner** — full access, can manage billing and team
 - **Admin** — can manage questionnaires, knowledge base, and team members
-- **Member** — can review and approve answers on questionnaires assigned to them
+- **Member** — can review and approve answers on questionnaires
 
 ---
 
@@ -315,6 +315,7 @@ The engine that finds the right policy content for each question uses a multi-la
 - SSO / SAML — single sign-on via Google Workspace, Okta, Azure AD
 - Multi-sheet Excel support — questionnaires that span multiple tabs in the same file
 - @mention and notifications — tag a team member directly in a comment to notify them by email; useful for routing technical questions to the right person without leaving the platform
+- Question assignment — assign individual questions to specific team members; members see their queue in a dedicated My Assignments view
 - Web portal integrations — OneTrust, Vanta, Whistic
 - Australian data sovereignty — all customer data stored exclusively on AWS Sydney region (ap-southeast-2), meeting Australian privacy and data residency requirements out of the box
 - Cloud document sync — connect Google Drive or SharePoint so Greenlight automatically detects when a source policy file is updated and prompts the team to re-embed it
