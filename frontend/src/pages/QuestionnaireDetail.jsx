@@ -403,14 +403,25 @@ function QuestionDetail({ q, qIdx, questionnaireId, customerName, onApprove, onR
   const [regening, setRegening] = useState(false)
   const [makeGeneric, setMakeGeneric] = useState(() => isCompany || detectIsGeneric(q.draft_answer || '', customerName))
   const saveTimer = useRef(null)
+  const userEdited = useRef(false)
 
-  // Re-initialise per question; live `looksGeneric` reacts to answer edits
+  // Reset everything when switching to a different question
   useEffect(() => {
+    userEdited.current = false
     setAnswer(q.draft_answer || '')
     setMakeGeneric(isCompany || detectIsGeneric(q.draft_answer || '', customerName))
   }, [q.id])
 
+  // Sync draft answer arriving from polling — but don't overwrite user's own edits
+  useEffect(() => {
+    if (!userEdited.current && q.draft_answer) {
+      setAnswer(q.draft_answer)
+      setMakeGeneric(isCompany || detectIsGeneric(q.draft_answer, customerName))
+    }
+  }, [q.draft_answer])
+
   const handleChange = (val) => {
+    userEdited.current = true
     setAnswer(val)
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
