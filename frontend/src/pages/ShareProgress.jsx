@@ -2,6 +2,39 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
 
+const STATUS_META = {
+  pending: { label: 'Pending', color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' },
+  generated: { label: 'Drafted', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
+  approved: { label: 'Approved', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+  rejected: { label: 'Flagged', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+}
+
+const CONFIDENCE_META = {
+  high: { label: 'High', color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+  medium: { label: 'Medium', color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+  low: { label: 'Low', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+}
+
+function Badge({ meta }) {
+  if (!meta) return null
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      padding: '3px 8px',
+      borderRadius: 999,
+      border: `1px solid ${meta.border}`,
+      background: meta.bg,
+      color: meta.color,
+      fontSize: 11,
+      fontWeight: 700,
+      whiteSpace: 'nowrap',
+    }}>
+      {meta.label}
+    </span>
+  )
+}
+
 export default function ShareProgress() {
   const { token } = useParams()
   const [data, setData] = useState(null)
@@ -26,8 +59,7 @@ export default function ShareProgress() {
 
   if (error) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
-      <div style={{ textAlign: 'center', padding: '40px' }}>
-        <p style={{ fontSize: 48, marginBottom: 12 }}>🔒</p>
+      <div style={{ textAlign: 'center', padding: 40 }}>
         <p style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Link not found</p>
         <p style={{ fontSize: 14, color: '#64748b' }}>This progress link is invalid or has been removed.</p>
       </div>
@@ -42,62 +74,103 @@ export default function ShareProgress() {
 
   const pct = data.pct
   const barColor = pct === 100 ? '#16a34a' : '#2563eb'
+  const questions = Array.isArray(data.questions) ? data.questions : []
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ maxWidth: 520, margin: '0 auto', padding: '60px 24px' }}>
-
-        {/* Brand */}
-        <div style={{ marginBottom: 32 }}>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif', color: '#0f172a' }}>
+      <div style={{ maxWidth: 1120, margin: '0 auto', padding: '48px 24px' }}>
+        <div style={{ marginBottom: 28 }}>
           <span style={{ background: '#2563eb', color: 'white', padding: '5px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700 }}>
             Greenlight
           </span>
         </div>
 
-        {/* Header */}
-        <div style={{ marginBottom: 32 }}>
-          {data.customer_name && (
-            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {data.customer_name}
+        <header style={{ display: 'flex', justifyContent: 'space-between', gap: 24, alignItems: 'flex-end', marginBottom: 24, flexWrap: 'wrap' }}>
+          <div>
+            {data.customer_name && (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 4px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {data.customer_name}
+              </p>
+            )}
+            <h1 style={{ fontSize: 28, fontWeight: 750, color: '#0f172a', margin: 0, lineHeight: 1.2 }}>
+              {data.name}
+            </h1>
+            <p style={{ fontSize: 13, color: '#64748b', margin: '8px 0 0' }}>
+              Read-only questionnaire review
+              {lastUpdated && <> · Updated {lastUpdated.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</>}
             </p>
+          </div>
+          <div style={{ minWidth: 220 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>Review progress</span>
+              <span style={{ fontSize: 22, fontWeight: 800, color: barColor }}>{pct}%</span>
+            </div>
+            <div style={{ height: 8, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct}%`, background: barColor, transition: 'width 0.5s ease' }} />
+            </div>
+          </div>
+        </header>
+
+        <section style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: 12,
+          marginBottom: 20,
+        }}>
+          {[
+            { label: 'Approved', value: data.approved, color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+            { label: 'Pending', value: data.pending, color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
+            { label: 'Flagged', value: data.rejected, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+            { label: 'Total', value: data.total, color: '#475569', bg: '#ffffff', border: '#e2e8f0' },
+          ].map(s => (
+            <div key={s.label} style={{ padding: '14px 16px', borderRadius: 10, background: s.bg, border: `1px solid ${s.border}` }}>
+              <p style={{ fontSize: 24, fontWeight: 800, color: s.color, margin: 0 }}>{s.value}</p>
+              <p style={{ fontSize: 12, color: s.color, margin: '2px 0 0', fontWeight: 700 }}>{s.label}</p>
+            </div>
+          ))}
+        </section>
+
+        <section style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(15,23,42,0.06)' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid #e2e8f0', background: '#ffffff' }}>
+            <p style={{ fontSize: 13, color: '#475569', fontWeight: 700, margin: 0 }}>Questions and answers</p>
+          </div>
+
+          {questions.length === 0 ? (
+            <div style={{ padding: 32, textAlign: 'center', color: '#64748b', fontSize: 14 }}>No questions are available yet.</div>
+          ) : (
+            <div>
+              {questions.map(q => (
+                <article key={q.id} style={{ padding: '18px', borderBottom: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 7, padding: '3px 7px' }}>
+                      Q{q.index}
+                    </span>
+                    <Badge meta={STATUS_META[q.status]} />
+                    <Badge meta={CONFIDENCE_META[q.confidence]} />
+                    {q.short_answer && (
+                      <span style={{ fontSize: 11, fontWeight: 800, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
+                        {q.short_answer}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, lineHeight: 1.45, color: '#0f172a' }}>
+                    {q.question_text}
+                  </p>
+                  {q.answer ? (
+                    <div style={{ fontSize: 13, lineHeight: 1.6, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', whiteSpace: 'pre-wrap' }}>
+                      {q.answer}
+                    </div>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>No draft answer yet.</p>
+                  )}
+                </article>
+              ))}
+            </div>
           )}
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', margin: 0, lineHeight: 1.3 }}>
-            {data.name}
-          </h1>
-        </div>
+        </section>
 
-        {/* Progress card */}
-        <div style={{ background: 'white', borderRadius: 16, padding: 28, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: '#475569', margin: 0 }}>Review progress</p>
-            <p style={{ fontSize: 22, fontWeight: 700, color: barColor, margin: 0 }}>{pct}%</p>
-          </div>
-          <div style={{ height: 8, borderRadius: 8, background: '#f1f5f9', overflow: 'hidden', marginBottom: 20 }}>
-            <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 8, transition: 'width 0.5s ease' }} />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-            {[
-              { label: 'Approved', value: data.approved, color: '#16a34a', bg: '#f0fdf4', border: 'rgba(34,197,94,0.2)' },
-              { label: 'Pending',  value: data.pending,  color: '#2563eb', bg: '#eff6ff', border: 'rgba(37,99,235,0.2)'  },
-              { label: 'Flagged',  value: data.rejected, color: '#dc2626', bg: '#fef2f2', border: 'rgba(220,38,38,0.2)'  },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: 'center', padding: '12px 8px', borderRadius: 10, background: s.bg, border: `1px solid ${s.border}` }}>
-                <p style={{ fontSize: 22, fontWeight: 700, color: s.color, margin: 0 }}>{s.value}</p>
-                <p style={{ fontSize: 11, color: s.color, margin: '2px 0 0', fontWeight: 600, opacity: 0.8 }}>{s.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
-          {pct === 100
-            ? 'All questions reviewed — ready to export.'
-            : 'This page refreshes automatically every 30 seconds.'}
-          {lastUpdated && (
-            <> · Last updated {lastUpdated.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</>
-          )}
+        <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', marginTop: 18 }}>
+          This page is read-only and refreshes automatically every 30 seconds.
         </p>
       </div>
 

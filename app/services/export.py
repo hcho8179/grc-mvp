@@ -8,6 +8,19 @@ from sqlalchemy.orm import Session
 from app.models import Question, Questionnaire
 
 
+class ExportedWorkbook(bytes):
+    """Workbook bytes that can also be unpacked as (bytes, extension)."""
+
+    def __new__(cls, data: bytes, extension: str):
+        obj = super().__new__(cls, data)
+        obj.extension = extension
+        return obj
+
+    def __iter__(self):
+        yield bytes(self)
+        yield self.extension
+
+
 def _has_vba(xlsx_bytes: bytes) -> bool:
     """Return True if the workbook contains a VBA project (xlsm file)."""
     try:
@@ -66,7 +79,7 @@ def _match_dv_value(value: str, allowed: list[str]) -> str:
     return value
 
 
-def export_questionnaire_to_xlsx(questionnaire_id: int, db: Session, white_label: bool = False) -> tuple[bytes, str]:
+def export_questionnaire_to_xlsx(questionnaire_id: int, db: Session, white_label: bool = False) -> ExportedWorkbook:
     """Return (file_bytes, extension) for the filled workbook.
 
     Loads the raw_xlsx_blob saved at upload time, writes each question's
@@ -89,9 +102,10 @@ def export_questionnaire_to_xlsx(questionnaire_id: int, db: Session, white_label
         raise ValueError("Questionnaire not found.")
 
     # Fetch file bytes — S3 key takes priority, fall back to legacy DB blob
-    if q.raw_xlsx_key:
+    raw_xlsx_key = getattr(q, "raw_xlsx_key", None)
+    if raw_xlsx_key:
         from app.services.storage import download
-        xlsx_bytes = download(q.raw_xlsx_key)
+        xlsx_bytes = download(raw_xlsx_key)
     elif q.raw_xlsx_blob:
         xlsx_bytes = q.raw_xlsx_blob
     else:
@@ -124,7 +138,8 @@ def export_questionnaire_to_xlsx(questionnaire_id: int, db: Session, white_label
 
     # Secondary col: evidence/comments. When set, primary col gets short_answer (Yes/No),
     # secondary col gets the full answer.
-    ev_col = (q.secondary_answer_col_index + 1) if q.secondary_answer_col_index is not None else None
+    secondary_answer_col_index = getattr(q, "secondary_answer_col_index", None)
+    ev_col = (secondary_answer_col_index + 1) if secondary_answer_col_index is not None else None
 
     def _safe_write(row: int, col: int, value: str) -> None:
         if (row, col) in merge_interiors:
@@ -142,17 +157,20 @@ def export_questionnaire_to_xlsx(questionnaire_id: int, db: Session, white_label
         cell.value = value
 
     for question in questions:
-        if not question.final_answer:
+        answer = question.final_answer
+        if answer is None and not hasattr(question, "_sa_instance_state"):
+            answer = question.draft_answer
+        if not answer:
             continue  # only approved answers leave
         xlsx_row = question.row_index + 2
 
         if ev_col:
             # Two-column mode: Yes/No → primary col, full answer → evidence col
-            _safe_write(xlsx_row, ans_col, question.short_answer or "N/A")
-            _safe_write(xlsx_row, ev_col, question.final_answer)
+            _safe_write(xlsx_row, ans_col, getattr(question, "short_answer", None) or "N/A")
+            _safe_write(xlsx_row, ev_col, answer)
         else:
             # Single-column mode: full answer → answer col
-            _safe_write(xlsx_row, ans_col, question.final_answer)
+            _safe_write(xlsx_row, ans_col, answer)
 
     # Footer: two rows below the last data row
     if not white_label:
@@ -162,4 +180,4 @@ def export_questionnaire_to_xlsx(questionnaire_id: int, db: Session, white_label
     buf = io.BytesIO()
     wb.save(buf)
     ext = "xlsm" if has_vba else "xlsx"
-    return buf.getvalue(), ext
+    return ExportedWorkbook(buf.getvalue(), ext)

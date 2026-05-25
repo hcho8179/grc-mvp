@@ -58,6 +58,7 @@ async def retrieve_relevant_chunks(
     top_k: int = 8,
     workspace_id: int | None = None,
     customer_name: str | None = None,
+    similarity_threshold: float = 0.0,
 ) -> list[RetrievalResult]:
     """Full 7-layer RAG pipeline. Falls back gracefully at every stage."""
 
@@ -93,7 +94,7 @@ async def retrieve_relevant_chunks(
     # Layer 9: Parent expansion — swap child chunks for their parent context
     expanded = _expand_to_parents(deduped, db)
 
-    return expanded[:top_k]
+    return [r for r in expanded if r.similarity >= similarity_threshold][:top_k]
 
 
 # ---------------------------------------------------------------------------

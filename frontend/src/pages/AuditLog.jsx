@@ -20,7 +20,9 @@ const ACTION_META = {
 
 const FILTER_OPTIONS = [
   { value: '', label: 'All events' },
-  ...Object.entries(ACTION_META).map(([value, { label }]) => ({ value, label })),
+  ...Object.entries(ACTION_META)
+    .filter(([value]) => value !== 'question.bulk_approved')
+    .map(([value, { label }]) => ({ value, label })),
 ]
 
 function fmtTime(iso) {

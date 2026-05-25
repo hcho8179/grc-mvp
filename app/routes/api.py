@@ -1983,7 +1983,12 @@ def api_public_share(token: str, db: Session = Depends(get_db)):
     ).first()
     if not qs:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    questions = db.query(Question).filter(Question.questionnaire_id == qs.id).all()
+    questions = (
+        db.query(Question)
+        .filter(Question.questionnaire_id == qs.id)
+        .order_by(Question.row_index)
+        .all()
+    )
     total    = len(questions)
     approved = sum(1 for q in questions if q.status == QuestionStatus.approved)
     rejected = sum(1 for q in questions if q.status == QuestionStatus.rejected)
@@ -1998,6 +2003,18 @@ def api_public_share(token: str, db: Session = Depends(get_db)):
         "rejected": rejected,
         "pending": pending,
         "pct": pct,
+        "questions": [
+            {
+                "id": q.id,
+                "index": i + 1,
+                "question_text": q.question_text,
+                "answer": q.final_answer or q.draft_answer or "",
+                "short_answer": q.short_answer or "",
+                "status": q.status.value,
+                "confidence": q.confidence.value if q.confidence else "",
+            }
+            for i, q in enumerate(questions)
+        ],
     }
 
 
@@ -2073,6 +2090,5 @@ def api_update_workspace_settings(
         workspace.white_label_export = body.white_label_export
     db.commit()
     return {"white_label_export": workspace.white_label_export}
-
 
 

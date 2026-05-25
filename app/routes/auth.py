@@ -37,6 +37,7 @@ class RegisterRequest(BaseModel):
     password: str
     full_name: str
     workspace_name: str = ""
+    org_name: str = ""
     invite_token: str = ""
     workspace_type: str = "consultant"
 class LoginRequest(BaseModel):
@@ -70,6 +71,7 @@ def _user_payload(user: User, workspace: Workspace) -> dict:
         "role": user.role,
         "workspace_id": user.workspace_id,
         "workspace_name": workspace.name if workspace else "",
+        "org_name": workspace.name if workspace else "",
         "workspace_slug": workspace.slug if workspace else "",
         "workspace_type": workspace.workspace_type if workspace else "consultant",
         "email_verified": user.email_verified,
@@ -112,15 +114,16 @@ async def register(request: Request, req: RegisterRequest, response: Response, b
             raise HTTPException(status_code=404, detail="Workspace not found")
         role = "member"
     else:
-        if not req.workspace_name.strip():
+        workspace_name = (req.workspace_name or req.org_name).strip()
+        if not workspace_name:
             raise HTTPException(status_code=400, detail="Workspace name required")
-        base_slug = _slugify(req.workspace_name)
+        base_slug = _slugify(workspace_name)
         slug = base_slug
         counter = 1
         while db.query(Workspace).filter(Workspace.slug == slug).first():
             slug = f"{base_slug}-{counter}"
             counter += 1
-        workspace = Workspace(name=req.workspace_name.strip(), slug=slug, workspace_type=req.workspace_type if req.workspace_type in ("consultant", "company") else "consultant")
+        workspace = Workspace(name=workspace_name, slug=slug, workspace_type=req.workspace_type if req.workspace_type in ("consultant", "company") else "consultant")
         db.add(workspace)
         db.flush()
         role = "owner"
