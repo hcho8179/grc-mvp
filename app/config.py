@@ -1,8 +1,9 @@
 from functools import lru_cache
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
 
@@ -52,9 +53,6 @@ class Settings(BaseSettings):
 
     # Sentry — set SENTRY_DSN in .env to enable error tracking
     sentry_dsn: str = ""
-
-    class Config:
-        env_file = ".env"
 
 
 @lru_cache

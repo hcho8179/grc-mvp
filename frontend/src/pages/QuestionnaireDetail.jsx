@@ -626,6 +626,9 @@ export default function QuestionnaireDetail() {
   const [toast, setToast] = useState(null)
   const [shareLink, setShareLink] = useState(null)
   const [shareCopied, setShareCopied] = useState(false)
+  const [reassigning, setReassigning] = useState(false)
+  const [reassignValue, setReassignValue] = useState('')
+  const [clients, setClients] = useState([])
   const initializedRef = useRef(false)
 
   const load = useCallback(() => {
@@ -654,6 +657,23 @@ export default function QuestionnaireDetail() {
   const current   = questions.find(q => q.id === currentId)
 
   const showToast = (msg, color) => setToast({ msg, color })
+
+  const openReassign = () => {
+    setReassignValue(qs?.customer_name || '')
+    api.getClients().then(setClients).catch(() => {})
+    setReassigning(true)
+  }
+
+  const submitReassign = async () => {
+    try {
+      const updated = await api.reassignQuestionnaire(id, reassignValue)
+      setData(d => ({ ...d, questionnaire: updated }))
+      setReassigning(false)
+      showToast('Client updated', 'green')
+    } catch {
+      showToast('Failed to update client', 'red')
+    }
+  }
 
   const flash = (qId, cls) => {
     setAnimMap(p => ({ ...p, [qId]: cls }))
@@ -808,8 +828,48 @@ export default function QuestionnaireDetail() {
           <p className="text-sm font-semibold leading-snug" style={{ color: t.text }}>
             {qs?.name}
           </p>
-          {qs?.customer_name && (
-            <p className="text-xs mt-0.5" style={{ color: t.text3 }}>{qs.customer_name}</p>
+          {qs?.customer_name && !reassigning && (
+            <div className="flex items-center gap-1 mt-0.5 group">
+              <p className="text-xs" style={{ color: t.text3 }}>{qs.customer_name}</p>
+              {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && currentUser?.workspace_type !== 'company' && (
+                <button
+                  onClick={openReassign}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Change client"
+                >
+                  <Icon name="edit" size={11} color={t.text3} />
+                </button>
+              )}
+            </div>
+          )}
+          {reassigning && (
+            <div className="mt-1 flex flex-col gap-1">
+              <input
+                autoFocus
+                list="reassign-clients"
+                value={reassignValue}
+                onChange={e => setReassignValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitReassign(); if (e.key === 'Escape') setReassigning(false) }}
+                className="text-xs rounded px-2 py-1 w-full"
+                style={{ background: t.inputBg, color: t.text, border: `1px solid ${t.borderColor}` }}
+                placeholder="Client name"
+              />
+              <datalist id="reassign-clients">
+                {clients.map(c => <option key={c} value={c} />)}
+              </datalist>
+              <div className="flex gap-1">
+                <button
+                  onClick={submitReassign}
+                  className="flex-1 text-xs rounded px-2 py-1 font-medium"
+                  style={{ background: t.primary, color: '#fff' }}
+                >Save</button>
+                <button
+                  onClick={() => setReassigning(false)}
+                  className="text-xs rounded px-2 py-1"
+                  style={{ background: t.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', color: t.text2 }}
+                >Cancel</button>
+              </div>
+            </div>
           )}
         </div>
 

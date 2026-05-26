@@ -57,7 +57,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
         value=token,
         httponly=True,
         secure=get_settings().https_only,  # True in production, False in dev/test
-        samesite="lax",
+        samesite="strict",
         max_age=7 * 24 * 60 * 60,
         path="/",
     )

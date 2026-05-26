@@ -61,6 +61,7 @@ export const api = {
   regenerateQuestion:   (qId, qId2)     => post(`/questionnaires/${qId}/questions/${qId2}/regenerate`),
 updateQuestion:       (qId, qId2, answer) =>
     patch(`/questionnaires/${qId}/questions/${qId2}`, { draft_answer: answer }),
+  reassignQuestionnaire:(id, customerName) => patch(`/questionnaires/${id}/reassign`, { customer_name: customerName }),
   deleteQuestionnaire:  (id)            => post(`/questionnaires/${id}/delete`),
 
   // Upload wizard

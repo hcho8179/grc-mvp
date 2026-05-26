@@ -98,7 +98,7 @@ Once the questionnaire is set up, the reviewer clicks "Draft Answers." The syste
 5. Assigns a confidence score (High / Medium / Low) based on how closely the sources matched the question
 6. Shows which specific policy documents or past answers it drew from
 
-This usually takes 1–3 minutes for a full questionnaire.
+This usually takes 1–3 minutes for a small questionnaire and around 20 minutes for a 200-question enterprise questionnaire.
 
 ---
 
@@ -199,7 +199,7 @@ Owners can invite team members by email. Three roles:
 
 ### How long does it actually take?
 
-Drafting speed is fixed and measurable — with a 6-second gap between questions (to stay within rate limits), a 200-question questionnaire takes roughly 20 minutes to draft. The human review time depends heavily on knowledge base maturity and questionnaire complexity.
+Drafting speed is fixed and measurable — a 200-question questionnaire takes roughly 20 minutes to draft. The human review time depends heavily on knowledge base maturity and questionnaire complexity.
 
 **Realistic time estimates:**
 
@@ -257,7 +257,7 @@ Since this is a security product, I want to be transparent about how the tool it
 **Accounts and authentication**
 - Passwords require: 8+ characters, at least one uppercase letter, one number, and one symbol
 - Passwords are stored using Argon2id hashing — the current industry standard recommended by OWASP
-- Login sessions use secure, httponly cookies (tokens are not accessible to JavaScript, protecting against XSS attacks)
+- Login sessions use secure, httponly cookies with the strictest same-site policy — tokens are inaccessible to JavaScript (blocking XSS theft) and the browser will never attach the session cookie to a cross-site request (blocking CSRF attacks)
 - Login is protected by three independent rate-limiting layers that together cover every known automated attack pattern:
   - **Per-IP request limit** — 10 attempts per minute per IP, blocking basic brute-force
   - **Per-email velocity lock** — 10 failures against the same email within 15 minutes triggers a lockout regardless of source IP, blocking credential stuffing (rotating IPs, same target account)
@@ -268,9 +268,10 @@ Since this is a security product, I want to be transparent about how the tool it
 
 **Data protection**
 - Uploaded files (Excel questionnaires, policy documents) are stored in S3-compatible object storage when configured; local/dev deployments fall back to database blobs
-- All data is scoped to the workspace at the database query level — every query is filtered by `workspace_id`, making cross-tenant data access structurally impossible without a deliberate application bypass
-- For consulting firms managing multiple clients: all clients share one workspace but are isolated by `customer_name` at the answer retrieval level. The RAG pipeline SQL filters approved answers so that only generic answers and the current client's answers are ever retrieved — other clients' answers are structurally invisible, not just hidden in the UI
+- All data is scoped to the workspace at the database query level — every query is filtered by workspace, making cross-tenant data access structurally impossible without a deliberate application bypass
+- For consulting firms managing multiple clients: all clients share one workspace but are isolated by client name at the answer retrieval level. The system filters approved answers at the database query level so that only generic answers and the current client's answers are ever retrieved — other clients' answers are structurally invisible, not just hidden in the UI
 - Soft deletes only — data is never permanently destroyed without explicit action
+- **Questionnaire re-assignment** — if a questionnaire is accidentally tagged to the wrong client, owners and admins can reassign it in one step. The system updates the questionnaire, all its approved answers, and the corresponding retrieval index in a single operation — logged in the audit trail and effective immediately
 - **Live document replacement with staleness tracking** — when a policy changes, admins can replace the file in-place rather than deleting and re-uploading. The system drops all old chunks, re-parses and re-embeds the new content immediately, and preserves the document's ID so the audit trail remains intact
 
 **Answer safety**
@@ -305,7 +306,7 @@ The engine that finds the right policy content for each question uses a multi-la
 
 **Current limitations**
 - **Single active sheet only** — the questionnaire uploader reads the first (active) sheet of an Excel file. Questionnaires spread across multiple tabs are not yet supported (on the roadmap)
-- **Sequential generation per workspace** — answer generation runs one questionnaire at a time within a workspace. For a solo consultant this is invisible; for a busy team where multiple members click Generate simultaneously, jobs queue up. Future fix is a dedicated task queue to run them in parallel
+- **One questionnaire generates at a time** — for a solo consultant this is invisible, but if multiple team members trigger generation simultaneously within the same workspace, jobs queue up rather than running in parallel. This is on the roadmap to fix
 - **No deadline or SLA tracking** — questionnaires have no due date field. There is no built-in reminder if a questionnaire has been sitting in draft for too long
 - **No compliance framework mapping** — questions cannot yet be tagged to specific controls (e.g. ISO 27001 Annex A, Essential Eight maturity levels). Mapping is manual
 

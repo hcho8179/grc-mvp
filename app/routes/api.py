@@ -1047,6 +1047,65 @@ def api_export_questionnaire(
     )
 
 
+class ReassignBody(BaseModel):
+    customer_name: str
+
+
+@router.patch("/questionnaires/{questionnaire_id}/reassign")
+def api_reassign_questionnaire(
+    questionnaire_id: int,
+    body: ReassignBody,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_role(current_user, "owner", "admin")
+    qs = db.query(Questionnaire).filter(
+        Questionnaire.id == questionnaire_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
+        Questionnaire.deleted_at == None,
+    ).first()
+    if not qs:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    old_name = qs.customer_name
+    new_name = body.customer_name.strip() or None
+
+    if old_name == new_name:
+        return _qs_json(qs)
+
+    qs.customer_name = new_name
+
+    # Re-tag approved answers that were tagged to the old client (not generic ones)
+    question_ids = [q.id for q in db.query(Question.id).filter(
+        Question.questionnaire_id == questionnaire_id
+    ).all()]
+
+    if question_ids:
+        affected_answers = db.query(ApprovedAnswer).filter(
+            ApprovedAnswer.source_question_id.in_(question_ids),
+            ApprovedAnswer.customer_name == old_name,
+        ).all()
+
+        for answer in affected_answers:
+            answer.customer_name = new_name
+            # Re-tag the corresponding KnowledgeChunk via row_index
+            if answer.source_question_id:
+                row_idx = db.query(Question.row_index).filter(
+                    Question.id == answer.source_question_id
+                ).scalar()
+                if row_idx is not None:
+                    db.query(KnowledgeChunk).filter(
+                        KnowledgeChunk.source_type == SourceType.approved_answer,
+                        KnowledgeChunk.source_section == f"Row {row_idx}",
+                        KnowledgeChunk.customer_name == old_name,
+                    ).update({"customer_name": new_name}, synchronize_session=False)
+
+    log_audit(db, current_user, "reassign_questionnaire", "questionnaire", questionnaire_id,
+              {"old_customer_name": old_name, "new_customer_name": new_name})
+    db.commit()
+    return _qs_json(qs)
+
+
 @router.post("/questionnaires/{questionnaire_id}/delete")
 def api_delete_questionnaire(
     questionnaire_id: int,
