@@ -10,7 +10,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
-from app.routes import admin, answers, api, auth, dashboard, knowledge, questionnaires
+from app.routes import admin, api, auth
 
 _settings = get_settings()
 if _settings.sentry_dsn:
@@ -86,8 +86,4 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(auth.router)             # Auth: register, login, me
 app.include_router(api.router)              # JSON API for React frontend
-app.include_router(dashboard.router, tags=["dashboard"])
-app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
-app.include_router(questionnaires.router, prefix="/questionnaires", tags=["questionnaires"])
-app.include_router(answers.router, prefix="/answers", tags=["answers"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"])
