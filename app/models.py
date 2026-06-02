@@ -219,7 +219,8 @@ class Questionnaire(Base):
     raw_xlsx_blob = Column(LargeBinary, nullable=True)  # legacy — new uploads use raw_xlsx_key
     raw_xlsx_key  = Column(String(512), nullable=True)  # S3 object key
     deleted_at    = Column(DateTime(timezone=True), nullable=True, index=True)
-    share_token   = Column(String(64), unique=True, nullable=True, index=True)
+    share_token            = Column(String(64), unique=True, nullable=True, index=True)
+    share_token_expires_at = Column(DateTime(timezone=True), nullable=True)
     answer_col_index = Column(Integer, nullable=True)            # 0-based; primary answer col (Yes/No when two cols selected)
     secondary_answer_col_index = Column(Integer, nullable=True)  # 0-based; evidence/comments col (full answer goes here)
     question_col_index = Column(Integer, nullable=True)          # 0-based; which column has questions
@@ -496,3 +497,27 @@ class JobQueue(Base):
     attempts   = Column(Integer, default=0, nullable=False)
     last_error = Column(Text, nullable=True)
     run_after  = Column(DateTime(timezone=True), server_default=func.now())  # for retry backoff
+
+
+# ---------------------------------------------------------------------------
+# Upload session  (replaces in-process dict; survives restarts)
+# ---------------------------------------------------------------------------
+
+class UploadSession(Base):
+    __tablename__ = "upload_sessions"
+
+    id           = Column(String(64), primary_key=True)   # UUID temp_id
+    created_at   = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    expires_at   = Column(DateTime(timezone=True), nullable=False, index=True)
+
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename     = Column(String(512), nullable=False)
+    file_type    = Column(String(16), nullable=False)   # "xlsx" | "docx" | "pdf"
+    name         = Column(String(512), nullable=False)
+    customer_name = Column(String(256), nullable=True)
+
+    # Store file bytes as LargeBinary (≤20 MB limit enforced at upload)
+    file_bytes   = Column(LargeBinary, nullable=False)
+
+    # Pre-extracted questions for non-xlsx files
+    pre_extracted_questions = Column(JSON, nullable=True)

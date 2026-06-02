@@ -30,6 +30,7 @@ from app.models import (
     KnowledgeChunk,
     LLMCall,
     Notification,
+    UploadSession,
     Workspace,
     Question,
     QuestionComment,
@@ -61,7 +62,7 @@ from fastapi import HTTPException as _HTTPException
 
 router = APIRouter(prefix="/api", tags=["api-json"])
 
-_react_upload_tmp: dict[str, dict] = {}
+# Upload sessions are now stored in the DB (UploadSession table) — no in-memory dict needed.
 
 
 # ── role guard ────────────────────────────────────────────────────────────────
@@ -246,21 +247,27 @@ async def api_questionnaire_upload_preview(
     if not name.strip():
         return JSONResponse({"error": "Questionnaire name is required."}, status_code=400)
 
+    from datetime import datetime, timezone, timedelta
     temp_id = str(uuid.uuid4())
+    _expires = datetime.now(timezone.utc) + timedelta(hours=2)
 
     if ext == ".xlsx":
         try:
             preview = parse_xlsx_questionnaire_preview(file_bytes)
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
-        _react_upload_tmp[temp_id] = {
-            "bytes": file_bytes,
-            "filename": filename,
-            "name": name.strip(),
-            "customer_name": customer_name.strip() or None,
-            "workspace_id": current_user.workspace_id,
-            "file_type": "xlsx",
-        }
+        db.add(UploadSession(
+            id=temp_id,
+            expires_at=_expires,
+            workspace_id=current_user.workspace_id,
+            filename=filename,
+            file_type="xlsx",
+            name=name.strip(),
+            customer_name=customer_name.strip() or None,
+            file_bytes=file_bytes,
+            pre_extracted_questions=None,
+        ))
+        db.commit()
         suggested = find_template_by_customer(customer_name.strip() or None, db)
         return {
             "temp_id": temp_id,
@@ -290,15 +297,18 @@ async def api_questionnaire_upload_preview(
     if not questions:
         return JSONResponse({"error": "No questions found in this document. Make sure it is a questionnaire."}, status_code=400)
 
-    _react_upload_tmp[temp_id] = {
-        "bytes": file_bytes,
-        "filename": filename,
-        "name": name.strip(),
-        "customer_name": customer_name.strip() or None,
-        "workspace_id": current_user.workspace_id,
-        "file_type": ext.lstrip("."),
-        "pre_extracted_questions": questions,
-    }
+    db.add(UploadSession(
+        id=temp_id,
+        expires_at=_expires,
+        workspace_id=current_user.workspace_id,
+        filename=filename,
+        file_type=ext.lstrip("."),
+        name=name.strip(),
+        customer_name=customer_name.strip() or None,
+        file_bytes=file_bytes,
+        pre_extracted_questions=questions,
+    ))
+    db.commit()
     return {
         "temp_id": temp_id,
         "filename": filename,
@@ -317,15 +327,16 @@ def api_questionnaire_upload_finalize(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    meta = _react_upload_tmp.get(temp_id)
-    if not meta:
+    from datetime import datetime, timezone
+    meta = db.get(UploadSession, temp_id)
+    if not meta or meta.expires_at < datetime.now(timezone.utc):
         return JSONResponse({"error": "Upload session expired. Please upload again."}, status_code=400)
-    if meta.get("workspace_id") != current_user.workspace_id:
+    if meta.workspace_id != current_user.workspace_id:
         return JSONResponse({"error": "Unauthorized."}, status_code=403)
 
-    if meta.get("file_type") in ("docx", "pdf"):
+    if meta.file_type in ("docx", "pdf"):
         # Questions already extracted by LLM in the preview step
-        raw_questions = meta.get("pre_extracted_questions", [])
+        raw_questions = meta.pre_extracted_questions or []
         if not raw_questions:
             return JSONResponse({"error": "No questions found. Please upload again."}, status_code=400)
         parsed_questions = [{"row_index": i, "question": q, "existing_answer": None} for i, q in enumerate(raw_questions)]
@@ -334,7 +345,7 @@ def api_questionnaire_upload_finalize(
         ans_col = int(answer_col) if answer_col.strip() else None
         ev_col = int(evidence_col) if evidence_col.strip() else None
         try:
-            parsed_questions = parse_xlsx_questionnaire_full(meta["bytes"], question_col, ans_col)
+            parsed_questions = parse_xlsx_questionnaire_full(meta.file_bytes, question_col, ans_col)
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         if not parsed_questions:
@@ -342,7 +353,7 @@ def api_questionnaire_upload_finalize(
 
     from app.services import storage as file_storage
     import uuid
-    file_bytes = meta["bytes"]
+    file_bytes = meta.file_bytes
     xlsx_key: str | None = None
     store_blob: bytes | None = file_bytes  # fallback for local dev without S3
 
@@ -353,9 +364,9 @@ def api_questionnaire_upload_finalize(
         store_blob = None  # don't double-store in DB
 
     questionnaire = Questionnaire(
-        name=meta["name"],
-        customer_name=meta["customer_name"],
-        source_filename=meta["filename"],
+        name=meta.name,
+        customer_name=meta.customer_name,
+        source_filename=meta.filename,
         status=QuestionnaireStatus.draft,
         question_count=len(parsed_questions),
         raw_xlsx_blob=store_blob,
@@ -378,8 +389,8 @@ def api_questionnaire_upload_finalize(
     log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="questionnaire.uploaded", resource_type="questionnaire", resource_id=questionnaire.id,
               detail={"name": questionnaire.name, "question_count": len(parsed_questions)})
+    db.delete(meta)  # clean up upload session
     db.commit()
-    del _react_upload_tmp[temp_id]
     return {"id": questionnaire.id, "name": questionnaire.name, "question_count": len(parsed_questions)}
 
 
@@ -2030,11 +2041,15 @@ def api_get_share_token(
     ).first()
     if not qs:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    if not qs.share_token:
-        import secrets
-        qs.share_token = secrets.token_urlsafe(32)
-        db.commit()
-    return {"token": qs.share_token}
+    from datetime import datetime, timezone, timedelta
+    import secrets
+    qs.share_token = secrets.token_urlsafe(32)
+    qs.share_token_expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
+              action="questionnaire.share_token_created", resource_type="questionnaire", resource_id=questionnaire_id,
+              detail={"expires_days": 30})
+    db.commit()
+    return {"token": qs.share_token, "expires_at": qs.share_token_expires_at.isoformat()}
 
 
 @router.post("/questionnaires/{questionnaire_id}/share-token/revoke")
@@ -2057,12 +2072,18 @@ def api_revoke_share_token(
 
 @router.get("/share/{token}")
 def api_public_share(token: str, db: Session = Depends(get_db)):
+    from datetime import datetime, timezone
     qs = db.query(Questionnaire).filter(
         Questionnaire.share_token == token,
         Questionnaire.deleted_at == None,
     ).first()
     if not qs:
         return JSONResponse({"error": "Not found"}, status_code=404)
+    if qs.share_token_expires_at and qs.share_token_expires_at < datetime.now(timezone.utc):
+        return JSONResponse({"error": "Share link has expired"}, status_code=410)
+    log_event(db, workspace_id=qs.workspace_id, user_id=None, user_email="public",
+              action="questionnaire.share_accessed", resource_type="questionnaire", resource_id=qs.id,
+              detail={"token_prefix": token[:8]})
     questions = (
         db.query(Question)
         .filter(Question.questionnaire_id == qs.id)
