@@ -1100,8 +1100,9 @@ def api_reassign_questionnaire(
                         KnowledgeChunk.customer_name == old_name,
                     ).update({"customer_name": new_name}, synchronize_session=False)
 
-    log_audit(db, current_user, "reassign_questionnaire", "questionnaire", questionnaire_id,
-              {"old_customer_name": old_name, "new_customer_name": new_name})
+    log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
+              action="reassign_questionnaire", resource_type="questionnaire", resource_id=questionnaire_id,
+              detail={"old_customer_name": old_name, "new_customer_name": new_name})
     db.commit()
     return _qs_json(qs)
 
@@ -1296,6 +1297,8 @@ def api_get_chunk(
 ):
     chunk = db.query(KnowledgeChunk).filter(KnowledgeChunk.id == chunk_id).first()
     if not chunk:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    if chunk.document and chunk.document.workspace_id != current_user.workspace_id:
         return JSONResponse({"error": "Not found"}, status_code=404)
     return {
         "id": chunk.id,
