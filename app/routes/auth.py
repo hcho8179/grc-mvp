@@ -83,6 +83,12 @@ async def _seed_answer_library(workspace_id: int) -> None:
     try:
         from scripts.seed_answer_library import main as _seed_main
         await _seed_main(workspace_id)
+        # After seeding, expand with question phrasing variations
+        try:
+            from scripts.expand_seed_variations import main as _expand_main
+            await _expand_main(workspace_id)
+        except Exception as expand_exc:
+            print(f"[seed] Variation expansion failed for workspace {workspace_id}: {expand_exc}")
     except Exception as exc:
         print(f"[seed] Answer library seeding failed for workspace {workspace_id}: {exc}")
 
