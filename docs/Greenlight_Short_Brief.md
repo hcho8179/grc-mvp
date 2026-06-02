@@ -14,7 +14,7 @@ When a vendor wants to sell to a large company, the company sends a security que
 
 The main competitors — Hypercomply and Conveyor — are US tools that have no coverage of Australian compliance frameworks. Greenlight is built specifically for the AU market.
 
-Every customer starts with 45 pre-loaded Australian GRC Q&A pairs covering the four frameworks AU clients ask about most:
+Every customer starts with 45 pre-loaded Australian GRC Q&A pairs — automatically expanded to ~270 semantic variants on registration so the system matches questions regardless of phrasing — covering the four frameworks AU clients ask about most:
 
 - **ASD Essential Eight** — required by almost every Australian government agency and large enterprise
 - **Australian Privacy Act / APPs** — mandatory for any company handling Australian personal data
