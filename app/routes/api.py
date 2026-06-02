@@ -2106,13 +2106,12 @@ def api_public_share(token: str, db: Session = Depends(get_db)):
         "pct": pct,
         "questions": [
             {
-                "id": q.id,
                 "index": i + 1,
                 "question_text": q.question_text,
-                "answer": q.final_answer or q.draft_answer or "",
-                "short_answer": q.short_answer or "",
+                # Only expose approved final answers — never draft or internal IDs
+                "answer": q.final_answer if q.status == QuestionStatus.approved else "",
+                "short_answer": q.short_answer if q.status == QuestionStatus.approved else "",
                 "status": q.status.value,
-                "confidence": q.confidence.value if q.confidence else "",
             }
             for i, q in enumerate(questions)
         ],

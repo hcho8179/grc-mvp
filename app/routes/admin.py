@@ -2,21 +2,37 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import get_db
 from app.models import LLMCall, Questionnaire
+from app.utils import real_ip
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
+_LOCALHOST = {"127.0.0.1", "::1"}
+
+
+def _require_admin_access(request: Request) -> None:
+    """Allow only localhost or requests with the correct ADMIN_SECRET header."""
+    settings = get_settings()
+    ip = real_ip(request)
+    if ip in _LOCALHOST:
+        return
+    secret = getattr(settings, "admin_secret", None)
+    if secret and request.headers.get("X-Admin-Secret") == secret:
+        return
+    raise HTTPException(status_code=403, detail="Forbidden")
+
 
 @router.get("/usage", response_class=HTMLResponse)
-async def usage(request: Request, db: Session = Depends(get_db)):
+async def usage(request: Request, db: Session = Depends(get_db), _: None = Depends(_require_admin_access)):
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 

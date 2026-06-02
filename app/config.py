@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # Sentry — set SENTRY_DSN in .env to enable error tracking
     sentry_dsn: str = ""
 
+    # Admin routes — set ADMIN_SECRET in .env to allow non-localhost access
+    admin_secret: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
