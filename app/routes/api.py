@@ -2130,6 +2130,14 @@ def api_question_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Verify questionnaire belongs to current workspace before exposing history
+    qs = db.query(Questionnaire).filter(
+        Questionnaire.id == questionnaire_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
+        Questionnaire.deleted_at == None,
+    ).first()
+    if not qs:
+        return JSONResponse({"error": "Not found"}, status_code=404)
     q = db.query(Question).filter(
         Question.id == question_id,
         Question.questionnaire_id == questionnaire_id,
