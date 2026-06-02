@@ -379,7 +379,7 @@ def change_role(
               detail={"target_email": target.email, "from": old_role, "to": req.role})
     db.commit()
 
-    org = db.query(Workspace).filter(Workspace.id == current_user.workspace_id).first()
+    workspace = db.query(Workspace).filter(Workspace.id == current_user.workspace_id).first()
     return {
         "updated": {"id": target.id, "email": target.email, "role": target.role},
         "you": _user_payload(current_user, workspace),

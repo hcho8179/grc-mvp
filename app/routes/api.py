@@ -2037,6 +2037,24 @@ def api_get_share_token(
     return {"token": qs.share_token}
 
 
+@router.post("/questionnaires/{questionnaire_id}/share-token/revoke")
+def api_revoke_share_token(
+    questionnaire_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    qs = db.query(Questionnaire).filter(
+        Questionnaire.id == questionnaire_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
+        Questionnaire.deleted_at == None,
+    ).first()
+    if not qs:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    qs.share_token = None
+    db.commit()
+    return {"status": "revoked"}
+
+
 @router.get("/share/{token}")
 def api_public_share(token: str, db: Session = Depends(get_db)):
     qs = db.query(Questionnaire).filter(
