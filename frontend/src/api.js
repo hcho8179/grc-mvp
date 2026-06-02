@@ -112,7 +112,7 @@ updateQuestion:       (qId, qId2, answer) =>
   flagQuestion: (qsId, qId, note) =>
     fetch(`/api/questionnaires/${qsId}/questions/${qId}/flag`, {
       ...OPTS, method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...CSRF_HEADERS(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ note: note || null }),
     }).then(r => r.json()),
 
@@ -120,7 +120,7 @@ updateQuestion:       (qId, qId2, answer) =>
   getComments:   (qsId, qId)        => get(`/questionnaires/${qsId}/questions/${qId}/comments`),
   postComment:   (qsId, qId, body)  => post(`/questionnaires/${qsId}/questions/${qId}/comments`, { body }),
   deleteComment: (qsId, qId, cId)   =>
-    fetch(`/api/questionnaires/${qsId}/questions/${qId}/comments/${cId}`, { ...OPTS, method: 'DELETE' }).then(r => r.json()),
+    fetch(`/api/questionnaires/${qsId}/questions/${qId}/comments/${cId}`, { ...OPTS, method: 'DELETE', headers: CSRF_HEADERS() }).then(r => r.json()),
 
   // KB Health
   getKBHealth: () => get('/kb-health'),
@@ -131,7 +131,7 @@ updateQuestion:       (qId, qId2, answer) =>
     fetch('/api/auth/team/' + userId + '/role', {
       ...OPTS,
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...CSRF_HEADERS(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ role }),
     }).then(r => r.json()),
 
@@ -163,14 +163,14 @@ updateQuestion:       (qId, qId2, answer) =>
   updateWorkspaceSettings: (data)   => fetch('/api/workspace/settings', {
     ...OPTS,
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...CSRF_HEADERS(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }).then(r => r.json()),
 
   // Invites
   createInvite:    ()   => post('/auth/invites', {}),
   listInvites:     ()   => get('/auth/invites'),
-  revokeInvite:    (id) => fetch(`/api/auth/invites/${id}`, { ...OPTS, method: 'DELETE' }).then(r => r.json()),
+  revokeInvite:    (id) => fetch(`/api/auth/invites/${id}`, { ...OPTS, method: 'DELETE', headers: CSRF_HEADERS() }).then(r => r.json()),
   validateInvite:  (token) => fetch(`/api/auth/invites/validate/${token}`).then(async r => {
     const d = await r.json(); if (!r.ok) throw new Error(d.detail); return d
   }),

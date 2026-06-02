@@ -100,7 +100,7 @@ class Document(Base):
     filename = Column(String(512), nullable=False)
     file_type = Column(Enum(FileType), nullable=False)
     chunk_count = Column(Integer, default=0, nullable=False)
-    content_hash = Column(String(64), nullable=True, unique=True, index=True)
+    content_hash = Column(String(64), nullable=True, index=True)  # unique per workspace, not globally
     is_starter = Column(Boolean, default=False, nullable=False, server_default="false")
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     content_updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=True)
