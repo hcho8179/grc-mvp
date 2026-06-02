@@ -1,8 +1,17 @@
 /** Thin wrapper around all FastAPI /api/* JSON endpoints.
- *  Auth is handled via HttpOnly cookie — no token in JS. */
+ *  Auth is handled via HttpOnly cookie — no token in JS.
+ *  CSRF: reads greenlight_csrf cookie and sends it as X-CSRF-Token header
+ *  on every mutating request (double-submit cookie pattern). */
 
 const BASE = '/api'
 const OPTS = { credentials: 'include' }  // send cookie on every request
+
+function getCsrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)greenlight_csrf=([^;]*)/)
+  return match ? decodeURIComponent(match[1]) : ''
+}
+
+const CSRF_HEADERS = () => ({ 'X-CSRF-Token': getCsrfToken() })
 
 async function get(path) {
   const res = await fetch(`${BASE}${path}`, OPTS)
@@ -15,7 +24,7 @@ async function post(path, body) {
   const res = await fetch(`${BASE}${path}`, {
     ...OPTS,
     method: 'POST',
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: { ...CSRF_HEADERS(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   })
   if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized') }
@@ -27,7 +36,7 @@ async function patch(path, formData) {
   const res = await fetch(`${BASE}${path}`, {
     ...OPTS,
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { ...CSRF_HEADERS(), 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(formData),
   })
   if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized') }
@@ -39,6 +48,7 @@ async function postFormRaw(path, formData) {
   const res = await fetch(`${BASE}${path}`, {
     ...OPTS,
     method: 'POST',
+    headers: CSRF_HEADERS(),
     body: formData,
   })
   const json = await res.json()

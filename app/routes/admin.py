@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import get_db
 from app.models import LLMCall, Questionnaire
-from app.utils import real_ip
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -20,13 +19,20 @@ _LOCALHOST = {"127.0.0.1", "::1"}
 
 
 def _require_admin_access(request: Request) -> None:
-    """Allow only localhost or requests with the correct ADMIN_SECRET header."""
+    """Allow only localhost or requests with the correct ADMIN_SECRET header.
+
+    Uses request.client.host (not X-Forwarded-For) for the localhost check
+    to prevent IP spoofing. Uses secrets.compare_digest for constant-time
+    comparison to prevent timing attacks.
+    """
+    import secrets as _secrets
     settings = get_settings()
-    ip = real_ip(request)
-    if ip in _LOCALHOST:
+    client_ip = request.client.host if request.client else ""
+    if client_ip in _LOCALHOST:
         return
-    secret = getattr(settings, "admin_secret", None)
-    if secret and request.headers.get("X-Admin-Secret") == secret:
+    secret = settings.admin_secret
+    provided = request.headers.get("X-Admin-Secret", "")
+    if secret and provided and _secrets.compare_digest(provided, secret):
         return
     raise HTTPException(status_code=403, detail="Forbidden")
 

@@ -50,13 +50,31 @@ def _slugify(name: str) -> str:
     return slug[:64] or "workspace"
 
 
+CSRF_COOKIE_NAME = "greenlight_csrf"
+
+
 def _set_auth_cookie(response: Response, token: str) -> None:
+    import secrets
     from app.config import get_settings
+    settings = get_settings()
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=get_settings().https_only,  # True in production, False in dev/test
+        secure=settings.https_only,
+        samesite="strict",
+        max_age=7 * 24 * 60 * 60,
+        path="/",
+    )
+    # CSRF token: readable by JS so the frontend can send it as a header.
+    # SameSite=Strict already blocks cross-site cookie delivery; this adds
+    # a second layer (double-submit cookie pattern).
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=csrf_token,
+        httponly=False,   # must be readable by JS
+        secure=settings.https_only,
         samesite="strict",
         max_age=7 * 24 * 60 * 60,
         path="/",

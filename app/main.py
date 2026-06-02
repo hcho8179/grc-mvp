@@ -45,6 +45,22 @@ async def _json_rate_limit_handler(request: Request, exc: RateLimitExceeded):
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _json_rate_limit_handler)
 
+# CSRF double-submit cookie validation for mutating API requests
+_CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+_CSRF_EXEMPT_PATHS = {"/api/auth/login", "/api/auth/register", "/api/auth/logout"}
+
+@app.middleware("http")
+async def enforce_csrf(request: Request, call_next):
+    if _settings.testing:
+        return await call_next(request)
+    if request.method not in _CSRF_SAFE_METHODS and request.url.path not in _CSRF_EXEMPT_PATHS:
+        cookie_token = request.cookies.get("greenlight_csrf", "")
+        header_token = request.headers.get("X-CSRF-Token", "")
+        if not cookie_token or not header_token or cookie_token != header_token:
+            return JSONResponse({"detail": "CSRF token missing or invalid."}, status_code=403)
+    return await call_next(request)
+
+
 # Security headers on every response
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):

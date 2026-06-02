@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     # Admin routes — set ADMIN_SECRET in .env to allow non-localhost access
     admin_secret: str = ""
 
+    # Set to true in tests to skip CSRF validation
+    testing: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:
