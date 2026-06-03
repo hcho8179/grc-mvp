@@ -156,20 +156,18 @@ def send_generation_complete(
     })
 
 
-def send_question_assigned(
+def send_due_date_reminder(
     to_email: str,
-    assignee_name: str,
-    assignor_name: str,
+    user_name: str,
     questionnaire_name: str,
-    question_text: str,
+    due_date: str,
     questionnaire_url: str,
 ) -> None:
     settings = get_settings()
-    short_q = question_text[:160] + ("…" if len(question_text) > 160 else "")
     _send({
         "from": settings.resend_from_email,
         "to": [to_email],
-        "subject": f"You've been assigned a question — {questionnaire_name}",
+        "subject": f"[Greenlight] Due soon — {questionnaire_name}",
         "html": f"""
         <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111827">
           <div style="margin-bottom:24px">
@@ -177,26 +175,16 @@ def send_question_assigned(
               Greenlight
             </span>
           </div>
-
-          <h1 style="font-size:22px;font-weight:700;margin:0 0 8px">Question assigned to you</h1>
+          <h1 style="font-size:22px;font-weight:700;margin:0 0 8px">Questionnaire due soon</h1>
           <p style="color:#6b7280;margin:0 0 20px">
-            Hi {assignee_name or to_email}, <strong>{assignor_name}</strong> assigned you a question
-            in <strong>{questionnaire_name}</strong>.
+            Hi {user_name or to_email}, <strong>{questionnaire_name}</strong> is due on
+            <strong>{due_date}</strong>.
           </p>
-
-          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:24px">
-            <p style="font-size:13px;color:#374151;margin:0;font-style:italic">"{short_q}"</p>
-          </div>
-
           <a href="{questionnaire_url}"
              style="display:inline-block;background:#2563eb;color:white;padding:12px 28px;
                     border-radius:10px;font-weight:600;font-size:14px;text-decoration:none">
-            View &amp; Answer
+            Open Questionnaire
           </a>
-
-          <p style="color:#9ca3af;font-size:12px;margin-top:32px">
-            You can find all your assigned questions under <em>My Assignments</em> in Greenlight.
-          </p>
         </div>
         """,
     })

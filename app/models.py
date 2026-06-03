@@ -188,6 +188,13 @@ class QuestionnaireStatus(str, enum.Enum):
     complete = "complete"       # all answers approved and exported
 
 
+class GenerationStatus(str, enum.Enum):
+    idle = "idle"
+    running = "running"
+    complete = "complete"
+    failed = "failed"
+
+
 class QuestionnaireTemplate(Base):
     """Saved layout + format for a customer's questionnaire format."""
     __tablename__ = "questionnaire_templates"
@@ -229,6 +236,14 @@ class Questionnaire(Base):
         ForeignKey("questionnaire_templates.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    due_reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
+    generation_status = Column(String(20), default="idle", nullable=False, server_default="idle")
+    generation_error = Column(Text, nullable=True)
+    generation_done_count = Column(Integer, default=0, nullable=False, server_default="0")
+    generation_started_at = Column(DateTime(timezone=True), nullable=True)
+    source_sheet_name = Column(String(256), nullable=True)
 
     workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
 

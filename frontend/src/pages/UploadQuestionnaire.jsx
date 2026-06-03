@@ -4,6 +4,7 @@ import { api } from '../api'
 import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
 import { Icon } from '../components/Layout'
+import { isoDueDateFromInput } from '../utils/questionnaireMeta.js'
 
 export default function UploadQuestionnaire() {
   const { t } = useTheme()
@@ -25,6 +26,8 @@ export default function UploadQuestionnaire() {
   const [evidenceCol, setEvidenceCol] = useState(null)
   const [result, setResult] = useState(null)
   const [clients, setClients] = useState([])
+  const [sheetIndex, setSheetIndex] = useState(0)
+  const [dueDate, setDueDate] = useState('')
 
   useEffect(() => {
     if (!isCompany) api.getClients().then(setClients).catch(() => {})
@@ -48,6 +51,7 @@ export default function UploadQuestionnaire() {
       fd.append('file', file); fd.append('name', name.trim()); fd.append('customer_name', isCompany ? '' : customer.trim())
       const data = await api.uploadQuestionnairePrev(fd)
       setPreview(data)
+      setSheetIndex(data.default_sheet_index ?? 0)
       if (data.suggested_template) {
         setQuestionCol(data.suggested_template.question_col)
         setAnswerCol(data.suggested_template.answer_col ?? null)
@@ -66,6 +70,9 @@ export default function UploadQuestionnaire() {
       fd.append('question_col', isDocOrPdf ? 0 : questionCol)
       if (answerCol !== null) fd.append('answer_col', answerCol)
       if (evidenceCol !== null) fd.append('evidence_col', evidenceCol)
+      if (preview.file_type === 'xlsx') fd.append('sheet_index', String(sheetIndex))
+      const dueIso = isoDueDateFromInput(dueDate)
+      if (dueIso) fd.append('due_date', dueIso)
       const data = await api.uploadQuestionnaireFinalize(preview.temp_id, fd)
       setResult(data); setStep(3)
       setTimeout(() => nav(`/questionnaires/${data.id}`), 2200)
@@ -161,8 +168,8 @@ export default function UploadQuestionnaire() {
               )}
             </div>
 
-            <div className={`grid gap-4 ${isCompany ? 'grid-cols-1' : 'grid-cols-2'}`}>
-              <div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className={isCompany ? 'sm:col-span-2' : ''}>
                 <label className="block text-xs font-semibold mb-1.5" style={{ color: t.text2 }}>
                   Questionnaire name <span className="text-red-500">*</span>
                 </label>
@@ -186,7 +193,20 @@ export default function UploadQuestionnaire() {
                   </datalist>
                 </div>
               )}
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: t.text2 }}>
+                  Due date <span className="text-xs font-normal" style={{ color: t.text3 }}>(optional)</span>
+                </label>
+                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                       className={inputCls} style={inputStyle} />
+              </div>
             </div>
+
+            {user && !user.email_verified && (
+              <p className="text-xs px-1" style={{ color: '#92400e' }}>
+                Verify your email before uploading (see banner at top).
+              </p>
+            )}
 
             <button type="submit" disabled={uploading || !file}
                     className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold
@@ -247,6 +267,28 @@ export default function UploadQuestionnaire() {
               <p className="text-xs mt-0.5" style={{ color: t.text3 }}>
                 {preview.preview.total_rows} rows · {preview.preview.sheet_name}
               </p>
+              {preview.sheets?.length > 1 && (
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold mb-1" style={{ color: t.text2 }}>Worksheet</label>
+                  <select
+                    value={sheetIndex}
+                    onChange={e => {
+                      const idx = Number(e.target.value)
+                      setSheetIndex(idx)
+                      setPreview(p => ({ ...p, preview: p.sheets[idx] }))
+                      setQuestionCol(null)
+                      setAnswerCol(null)
+                      setEvidenceCol(null)
+                    }}
+                    className="w-full px-3 py-2 rounded-lg text-sm"
+                    style={inputStyle}
+                  >
+                    {preview.sheets.map(s => (
+                      <option key={s.index} value={s.index}>{s.name} ({s.total_rows} rows)</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {preview.suggested_template && (
                 <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
                      style={{ background: t.dark ? 'rgba(59,130,246,0.1)' : '#eff6ff',

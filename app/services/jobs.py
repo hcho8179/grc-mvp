@@ -8,6 +8,9 @@ Supported job types:
     send_verification_email — send email verification link
     send_password_reset     — send password reset link
     send_restore_notification — notify owner when item restored from trash
+    generate_questionnaire  — background answer generation
+    purge_expired_trash     — hard-delete items in trash > 90 days
+    due_date_reminders      — email owners about upcoming due dates
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from app.models import JobQueue, JobStatus
 
 MAX_ATTEMPTS = 3
 POLL_INTERVAL = 10  # seconds between polls
+_last_daily_maintenance: datetime | None = None
 
 
 def enqueue(job_type: str, payload: dict) -> None:
@@ -63,8 +67,42 @@ async def _run_job(job: JobQueue) -> None:
             job.payload["restored_by_email"],
         )
 
+    elif job.job_type == "generate_questionnaire":
+        from app.services.generation_workflow import run_questionnaire_generation
+        await run_questionnaire_generation(
+            job.payload["questionnaire_id"],
+            job.payload["user_id"],
+        )
+
+    elif job.job_type == "purge_expired_trash":
+        from app.services.maintenance import purge_expired_trash
+        db = SessionLocal()
+        try:
+            purge_expired_trash(db)
+        finally:
+            db.close()
+
+    elif job.job_type == "due_date_reminders":
+        from app.services.maintenance import process_due_date_reminders
+        db = SessionLocal()
+        try:
+            process_due_date_reminders(db)
+        finally:
+            db.close()
+
     else:
         raise ValueError(f"Unknown job type: {job.job_type!r}")
+
+
+async def _maybe_enqueue_daily_maintenance() -> None:
+    """Enqueue trash purge + due-date reminders at most once per 24 hours."""
+    global _last_daily_maintenance
+    now = datetime.now(timezone.utc)
+    if _last_daily_maintenance and (now - _last_daily_maintenance) < timedelta(hours=24):
+        return
+    _last_daily_maintenance = now
+    enqueue("purge_expired_trash", {})
+    enqueue("due_date_reminders", {})
 
 
 async def worker_loop() -> None:
@@ -72,6 +110,8 @@ async def worker_loop() -> None:
     print("[jobs] Worker started")
     while True:
         await asyncio.sleep(POLL_INTERVAL)
+        await _maybe_enqueue_daily_maintenance()
+
         db: Session = SessionLocal()
         try:
             now = datetime.now(timezone.utc)
@@ -83,16 +123,16 @@ async def worker_loop() -> None:
                     JobQueue.run_after <= now,
                 )
                 .order_by(JobQueue.created_at)
-                .with_for_update(skip_locked=True)  # safe for multiple workers
+                .with_for_update(skip_locked=True)
                 .first()
             )
             if not job:
                 continue
 
-            job.status   = JobStatus.running
+            job.status = JobStatus.running
             job.attempts += 1
             db.commit()
-            db.refresh(job)  # reload attributes before session closes — prevents DetachedInstanceError
+            db.refresh(job)
 
         except Exception:
             db.rollback()
@@ -100,7 +140,6 @@ async def worker_loop() -> None:
         finally:
             db.close()
 
-        # Run the job outside the DB transaction so slow jobs don't hold locks
         db2: Session = SessionLocal()
         try:
             await _run_job(job)
@@ -118,8 +157,7 @@ async def worker_loop() -> None:
                 job.status = JobStatus.failed
                 print(f"[jobs] {job.job_type} #{job.id} failed permanently: {exc}")
             else:
-                # Exponential backoff: retry after 1min, 5min, 25min
-                job.status   = JobStatus.pending
+                job.status = JobStatus.pending
                 job.run_after = datetime.now(timezone.utc) + timedelta(
                     minutes=5 ** (job.attempts - 1)
                 )

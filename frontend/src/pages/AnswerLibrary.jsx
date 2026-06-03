@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -15,14 +16,18 @@ export default function AnswerLibrary() {
   const [confirmArchive, setConfirmArchive] = useState(null)
   const [markingFresh, setMarkingFresh] = useState(null)
   const [makingGeneric, setMakingGeneric] = useState(null)
-  const [staleOnly, setStaleOnly] = useState(false)
+  const [searchParams] = useSearchParams()
+  const [staleOnly, setStaleOnly] = useState(searchParams.get('stale') === '1')
 
   const load = () => {
     setLoading(true)
-    api.getAnswerLibrary(search, category).then(setData).catch(console.error).finally(() => setLoading(false))
+    api.getAnswerLibrary(search, category, staleOnly).then(setData).catch(console.error).finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [search, category])
+  useEffect(() => { load() }, [search, category, staleOnly])
+  useEffect(() => {
+    if (searchParams.get('stale') === '1') setStaleOnly(true)
+  }, [searchParams])
 
   const handleMarkFresh = async (answer) => {
     setMarkingFresh(answer.id)
@@ -61,7 +66,8 @@ export default function AnswerLibrary() {
             <h1 className="text-2xl font-bold" style={{ color: t.text }}>Answer Library</h1>
             <p className="text-sm mt-0.5" style={{ color: t.text2 }}>
               <span className="font-semibold" style={{ color: t.text }}>{data.total}</span> approved answers ·{' '}
-              <span className="font-semibold" style={{ color: t.text }}>{data.total_reuses}</span> total reuses
+              <span className="font-semibold" style={{ color: t.text }}>{data.total_reuses}</span> reuses.
+              Stale = source policy changed — re-review before reuse.
             </p>
           </div>
         </div>
@@ -89,12 +95,12 @@ export default function AnswerLibrary() {
         </div>
 
         {/* Stale filter */}
-        {data.answers.some(a => a.is_stale) && (
+        {(data.stale_count > 0 || data.answers.some(a => a.is_stale)) && (
           <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-xl text-xs"
                style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
             <span style={{ color: '#d97706' }}>⚠</span>
             <span className="font-medium" style={{ color: '#92400e' }}>
-              {data.answers.filter(a => a.is_stale).length} answer{data.answers.filter(a => a.is_stale).length !== 1 ? 's' : ''} may be outdated — a source document was updated or deleted.
+              {data.stale_count ?? data.answers.filter(a => a.is_stale).length} answer{(data.stale_count ?? 0) !== 1 ? 's' : ''} may be outdated — a source policy was replaced or removed. Re-review before reusing.
             </span>
             <button onClick={() => setStaleOnly(s => !s)}
                     className="ml-auto px-2.5 py-1 rounded-lg font-semibold transition-all"

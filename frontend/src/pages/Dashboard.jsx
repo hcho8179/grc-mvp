@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useTheme } from '../context/ThemeContext'
 import { Icon } from '../components/Layout'
-import { StatusBadge } from '../components/StatusBadge'
+import { StatusBadge, GenerationBadge } from '../components/StatusBadge'
+import { dueDateUrgency, formatDueDate } from '../utils/questionnaireMeta.js'
 
 function StatCard({ label, value, sub, icon, accent }) {
   const { t } = useTheme()
@@ -107,7 +108,7 @@ export default function Dashboard() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: t.tableHead, borderBottom: `1px solid ${t.borderColor}` }}>
-                  {['Name', 'Customer', 'Status', 'Questions', 'Date'].map(h => (
+                  {['Name', 'Customer', 'Status', 'AI', 'Due', 'Questions', 'Date'].map(h => (
                     <th key={h} className="px-5 py-3 text-left text-xs font-semibold"
                         style={{ color: t.text3 }}>{h}</th>
                   ))}
@@ -122,9 +123,20 @@ export default function Dashboard() {
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <td className="px-5 py-3.5">
                       <span className="font-medium" style={{ color: t.text }}>{q.name}</span>
+                      {q.source_sheet_name && (
+                        <p className="text-[10px] mt-0.5" style={{ color: t.text3 }}>{q.source_sheet_name}</p>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-sm" style={{ color: t.text2 }}>{q.customer_name || '—'}</td>
                     <td className="px-5 py-3.5"><StatusBadge status={q.status} /></td>
+                    <td className="px-5 py-3.5"><GenerationBadge status={q.generation_status} /></td>
+                    <td className="px-5 py-3.5 text-xs font-medium" style={{
+                      color: dueDateUrgency(q.due_date, q.status) === 'overdue' ? '#ef4444'
+                        : dueDateUrgency(q.due_date, q.status) === 'soon' ? '#f59e0b'
+                        : t.text3,
+                    }}>
+                      {formatDueDate(q.due_date)}
+                    </td>
                     <td className="px-5 py-3.5 font-semibold tabular-nums" style={{ color: t.text2 }}>{q.question_count}</td>
                     <td className="px-5 py-3.5 text-xs" style={{ color: t.text3 }}>
                       {new Date(q.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}

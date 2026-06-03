@@ -30,6 +30,7 @@ jobs:
       JWT_SECRET_KEY: ci-test-secret-not-used-in-production
       ALLOWED_ORIGINS: http://localhost:5173
       HTTPS_ONLY: "false"
+      TESTING: "true"
       # LLM/embedding keys — not needed for tests (all mocked)
       GEMINI_API_KEY: ""
       ANTHROPIC_API_KEY: ""

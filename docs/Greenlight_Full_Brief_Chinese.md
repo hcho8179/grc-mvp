@@ -116,10 +116,10 @@ Greenlight 专为澳大利亚市场打造，内置以下合规框架的知识：
 ### 上传问卷
 
 **Excel 格式（主要格式）：**
-1. 用户上传 .xlsx 文件并填写问卷名称和客户名称
-2. 系统预览前几行，用户选择哪一列是问题、哪一列是答案
-3. 系统检查是否有该客户的历史模板（QuestionnaireTemplate），如有则自动预填列选择
-4. 用户确认后，系统正式解析所有题目行
+1. 用户上传 .xlsx，填写问卷名称；咨询公司模式填写客户名称；可选**截止日期**
+2. 系统预览工作表内容；若文件含**多个工作表**，用户选择要导入的 sheet
+3. 用户映射问题列、Yes/No 列、可选证据列；系统可自动匹配历史模板
+4. 确认后解析所有题目行
 
 **Word / PDF 格式：**
 1. 上传后系统提取文本
@@ -128,19 +128,20 @@ Greenlight 专为澳大利亚市场打造，内置以下合规框架的知识：
 
 **共同步骤：**
 - 每道题存为一个 Question 记录，状态为 `pending`
-- 原始 Excel 文件存入 S3（或 PostgreSQL LargeBinary 作为备用）
+- 原始文件存入 S3（或 PostgreSQL LargeBinary 作为备用）
 
 ### 生成答案
 
-用户点击"Generate"按钮，系统为每道 `pending` 状态的题目：
+用户点击「生成草稿」后，任务进入**后台队列**（HTTP 立即返回 `queued`，前端轮询 `generation-status`）。对每个 `pending` 题目：
 
 1. 调用 8 层 RAG 管道检索最相关的知识块
 2. 调用 LLM 生成答案
-3. 返回：完整答案、Yes/No 简短答案、置信度（高/中/低）、参考块 ID、推理说明
-4. 如果与答案库中已有答案存在矛盾，标注冲突警告
+3. 返回：完整答案、Yes/No 简短答案、置信度、参考块 ID、推理说明
+4. 若与答案库矛盾，标注冲突警告
 5. 问题状态更新为 `generated`
-6. 每道题之间间隔 6 秒（控制 API 速率）
-7. 生成完成后发送站内通知和邮件通知
+6. 完成后发送站内通知和邮件（如已配置）
+
+同一问卷同时只能有一个生成任务；不同问卷可并行。
 
 ### 人工审核
 
@@ -208,12 +209,12 @@ Greenlight 专为澳大利亚市场打造，内置以下合规框架的知识：
 | name | String | 工作空间名称（公司名） |
 | slug | String unique | URL 友好的唯一标识 |
 | white_label_export | Boolean | 启用后导出文件不含 Greenlight 品牌 |
-| workspace_type | String | `"consultant"` 或 `"direct"` |
+| workspace_type | String | `"consultant"` 或 `"company"` |
 | created_at | DateTime | 创建时间 |
 
 `workspace_type` 区分：
 - `consultant`：GRC 顾问，同时管理多个客户
-- `direct`：公司自己管理合规，只有一个客户（自己）
+- `company`：公司自己管理合规，只有一个客户（自己）
 
 ### User（用户）
 
@@ -302,10 +303,19 @@ Greenlight 专为澳大利亚市场打造，内置以下合规框架的知识：
 | answer_col_index | Integer | 答案列索引（Yes/No 列） |
 | secondary_answer_col_index | Integer | 附加答案列索引（详细说明列） |
 | template_id | FK → QuestionnaireTemplate | 使用的格式模板 |
+| source_sheet_name | String | Excel 工作表名称（多 sheet 上传时） |
+| due_date | DateTime | 可选截止日期 |
+| due_reminder_sent_at | DateTime | 到期提醒邮件已发送时间 |
+| generation_status | String | `idle` / `running` / `complete` / `failed` |
+| generation_error | Text | 生成失败时的错误信息 |
+| generation_done_count | Integer | 本轮已生成草稿数 |
+| generation_started_at | DateTime | 本轮生成开始时间 |
 | deleted_at | DateTime | 软删除时间戳 |
 | workspace_id | FK → Workspace | |
 
 状态流转：`draft` → `in_progress`（开始生成）→ `complete`（全部批准）
+
+生成在后台 job 中执行；`POST /generate` 立即返回 `queued`。
 
 ### Question（问题）
 
@@ -623,9 +633,20 @@ S3_ENDPOINT_URL=
 - 做得越多，下次越快
 - 系统优先复用已经人工验证的答案，而不是从头生成
 
-### 过期检测（Staleness）
+### 政策新鲜度（Staleness）— 真实工作流
 
-当文档被替换（`/knowledge/{id}/replace`）或删除时，系统自动检查哪些答案库条目引用了该文档的块，将其 `is_stale` 标记为 `true`。用户在界面上看到"已过期"提示，可以选择重新审核或手动标为"仍有效"。
+Greenlight 区分两类「过期」：
+
+| 类型 | 触发条件 | 系统行为 | 是否阻止 AI |
+|------|----------|----------|-------------|
+| **内容变更** | 知识库文档 **Replace** 或 **删除** | 引用该文档 chunk 的 `ApprovedAnswer.is_stale = true` | 否（但库内答案需复核后再信） |
+| **日历提醒** | 距 `content_updated_at` ≥ 90 或 180 天 | 知识库与审卷来源面板显示琥珀/红色徽章 | **否** — 仅提醒人工确认 |
+
+**推荐操作：** 政策改版时用 Replace，保留 document ID 与审计链；替换完成后 UI 提示「N 条答案库条目待复核」，链到 Answer Library `?stale=1`。
+
+**Mark fresh：** 审核员确认某条 stale 答案仍正确后，调用 `POST /api/answers/library/{id}/mark-fresh` 清除标记。
+
+**API：** `GET /api/knowledge/freshness-summary` — 工作空间级：stale 答案数 + 待确认文档列表。
 
 ### 冲突检测
 
@@ -801,12 +822,14 @@ enqueue("send_restore_notification", {
 - `GET /api/dashboard` — 总问卷数、已答题数、平均置信度、节省工时、最近问卷
 
 ### 问卷管理
-- `POST /api/questionnaires/upload/preview` — 上传预览，返回列结构
-- `POST /api/questionnaires/upload/{temp_id}/finalize` — 确认上传
+- `POST /api/questionnaires/upload/preview` — 上传预览（XLSX 返回所有 `sheets`）；需已验证邮箱
+- `POST /api/questionnaires/upload/{temp_id}/finalize` — 确认上传（`sheet_index`、`due_date` 可选）
 - `GET /api/questionnaires` — 分页列表
 - `GET /api/questionnaires/{id}` — 详情 + 所有问题
 - `GET /api/questionnaires/clients` — 自动补全的客户名列表
-- `POST /api/questionnaires/{id}/generate` — 触发 AI 生成
+- `POST /api/questionnaires/{id}/generate` — 排队后台 AI 生成（需已验证邮箱）
+- `GET /api/questionnaires/{id}/generation-status` — 生成进度
+- `PATCH /api/questionnaires/{id}/due-date` — 设置/清除截止日期
 - `POST /api/questionnaires/{id}/delete` — 软删除
 - `POST /api/questionnaires/{id}/restore` — 从回收站恢复
 - `POST /api/questionnaires/{id}/purge` — 永久删除（仅 owner）
@@ -824,14 +847,16 @@ enqueue("send_restore_notification", {
 ### 知识库
 - `POST /api/knowledge/upload` — 上传策略文档
 - `POST /api/knowledge/{id}/replace` — 替换文档内容
-- `GET /api/knowledge` — 分页列表
+- `GET /api/knowledge` — 分页列表（含 `review_level`、`stale_answer_count`）
+- `GET /api/knowledge/freshness-summary` — 政策卫生摘要
+- `POST /api/knowledge/{id}/replace` — 替换内容；返回 `stale_answers_marked`
 - `POST /api/knowledge/{id}/delete` — 软删除
 - `POST /api/knowledge/{id}/restore` — 恢复
 - `POST /api/knowledge/{id}/purge` — 永久删除
 - `GET /api/chunks/{id}` — 获取单个知识块原文
 
 ### 答案库
-- `GET /api/answers/library` — 带搜索和分类过滤的列表
+- `GET /api/answers/library` — 搜索、分类、`stale_only` 过滤
 - `POST /api/answers/library/{id}/mark-fresh` — 清除过期标记
 - `POST /api/answers/library/{id}/make-generic` — 改为通用答案
 - `POST /api/answers/library/{id}/archive` — 归档答案
@@ -941,18 +966,23 @@ frontend/src/
 
 ## 20. 知识库健康检查
 
-`/api/kb-health` 端点分析整个工作空间的答案质量：
+### 主题覆盖（`/api/kb-health`）
 
-**按类别分组统计：**
-- 每个话题类别的总问题数
-- 批准率 / 拒绝率
-- 低置信度比例
-- 无来源（无知识块匹配）的比例
-- 平均检索相似度分数
+按话题类别统计：
 
-**计算整体健康分（0-100）：**
-- 低置信度和无来源问题越多，健康分越低
-- 审核人员可以看到哪些话题的知识库内容不足，针对性地上传相关策略文档
+- 总问题数、批准率 / 拒绝率
+- 低置信度比例、无来源比例
+- 平均检索相似度
+- 整体健康分（0–100）与「建议上传哪类文档」提示
+
+### 政策卫生（`/api/knowledge/freshness-summary`）
+
+与「主题覆盖」互补，面向 **政策生命周期**：
+
+- **stale_answer_count** — 因政策替换/删除而待复核的已批准答案数
+- **documents_needing_review** — 超过 90/180 天未 upload/replace 确认的 PDF/DOCX 列表
+
+KB Health 页面同时展示上述两块；Knowledge Base 列表显示「最后确认」日期与年龄徽章。
 
 ---
 
@@ -1012,24 +1042,32 @@ pytest tests/test_critical_path.py::test_name -v  # 单个测试
 
 | 问题 | 现状 |
 |------|------|
-| 不支持跨多工作表的 Excel 问卷 | 路线图中 |
-| 答案生成不支持并行（同时只能一个问卷） | 路线图中 |
-| 问卷没有截止日期/SLA 跟踪 | 未计划 |
-| 过期答案检测（已实现 is_stale 标记，但不主动提醒） | 部分实现 |
-| Essential Eight 答案未区分成熟度等级（Level 1/2/3），可能给出错误等级的答案 | 路线图中 |
+| 同一问卷并行多次生成 | 不支持（单问卷单任务；不同问卷可并行） |
+| 生成 worker | 与 API 同进程；需保持服务运行 |
+| 合规框架控制项映射 | 未实现（Essential Eight 等级等） |
+| 逐题分配给成员 | 已移除；使用 `flag_note` |
+| Outbound 供应商评估 | 未实现，长期愿景 |
+
+### 已实现（勿再写进「路线图」）
+
+| 能力 | 说明 |
+|------|------|
+| 多工作表 Excel | 上传预览返回 `sheets[]`，finalize 传 `sheet_index` |
+| 问卷截止日期 | `due_date` + 维护任务邮件提醒（48h 内） |
+| 政策新鲜度 | Replace/删除 → stale 答案；90/180 天确认提醒 |
+| 回收站 90 天自动清除 | `purge_expired_trash` 维护任务 |
+| 邮箱验证门禁 | 上传/知识库/批量生成（`TESTING=true` 跳过） |
 
 ### 路线图功能
 
 - 多因素认证（MFA）
 - 单点登录（SSO：Google Workspace / Okta / Azure AD）
-- 多工作表 Excel 支持
-- 问题分配给团队成员
+- 逐题分配给团队成员（v1 曾移除，可能回归）
 - OneTrust / Vanta / Whistic 集成
 - 澳大利亚数据主权（AWS 悉尼节点托管）
 - Google Drive / SharePoint 文档同步
-- 合规框架映射（将答案自动标注至对应的 Essential Eight 策略、ISO 27001 控制项等）
-- 并行答案生成
-- Essential Eight 成熟度等级支持（给知识块加入 framework、maturity_level、control 元数据标签，按等级精确检索）
+- 合规框架映射（Essential Eight 策略、ISO 27001 控制项等）
+- Essential Eight 成熟度等级精确检索（chunk 元数据标签）
 
 ---
 

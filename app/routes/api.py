@@ -17,8 +17,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from collections import defaultdict
 
-from app.auth import get_current_user
+from app.auth import get_current_user, require_email_verified
 from app.db import get_db
+from app.services.document_freshness import (
+    count_stale_answers,
+    mark_answers_stale_for_chunk_ids,
+    review_meta,
+)
 from app.models import (
     AnswerVersion,
     ApprovedAnswer,
@@ -34,6 +39,7 @@ from app.models import (
     Workspace,
     Question,
     QuestionComment,
+    GenerationStatus,
     QuestionnaireStatus,
     QuestionnaireTemplate,
     Questionnaire,
@@ -54,7 +60,10 @@ from app.services.parsing import (
     parse_pdf,
     parse_xlsx_questionnaire_full,
     parse_xlsx_questionnaire_preview,
+    parse_xlsx_questionnaire_sheets_preview,
 )
+from app.services.citations import save_citation_scores
+from app.services import jobs as job_queue
 from app.services.retrieval import retrieve_relevant_chunks, record_positive_feedback, record_negative_feedback
 from app.services.sanitize import sanitize_text
 from app.services.templates import find_template_by_customer, list_templates
@@ -123,21 +132,6 @@ def _record_version(db: Session, q: Question, user: User, action: str) -> None:
     ))
 
 
-def _save_citation_scores(db: Session, question_id: int, chunks: list, cited_ids: list[int]) -> dict[int, float]:
-    """Write retrieval scores to question_citations and return {chunk_id: score} map."""
-    score_map = {r.chunk.id: r.similarity for r in chunks}
-    # Clear old citations for this question then re-insert with fresh scores
-    db.execute(question_citations.delete().where(question_citations.c.question_id == question_id))
-    for cid in cited_ids:
-        if cid in score_map:
-            db.execute(question_citations.insert().values(
-                question_id=question_id,
-                chunk_id=cid,
-                retrieval_score=score_map[cid],
-            ))
-    return score_map
-
-
 def _comment_json(c: QuestionComment) -> dict:
     return {
         "id": c.id,
@@ -155,10 +149,16 @@ def _qs_json(q: Questionnaire) -> dict:
         "name": q.name,
         "customer_name": q.customer_name or "",
         "source_filename": q.source_filename or "",
+        "source_sheet_name": q.source_sheet_name or "",
         "status": q.status.value,
         "question_count": q.question_count,
         "created_at": q.created_at.isoformat(),
         "share_token": q.share_token or None,
+        "due_date": q.due_date.isoformat() if q.due_date else None,
+        "generation_status": q.generation_status or GenerationStatus.idle.value,
+        "generation_error": q.generation_error,
+        "generation_done_count": q.generation_done_count or 0,
+        "generation_started_at": q.generation_started_at.isoformat() if q.generation_started_at else None,
     }
 
 
@@ -232,7 +232,7 @@ async def api_questionnaire_upload_preview(
     file: UploadFile = File(...),
     name: str = Form(...),
     customer_name: str = Form(""),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_email_verified),
     db: Session = Depends(get_db),
 ):
     file_bytes = await file.read()
@@ -253,9 +253,11 @@ async def api_questionnaire_upload_preview(
 
     if ext == ".xlsx":
         try:
-            preview = parse_xlsx_questionnaire_preview(file_bytes)
+            sheets_data = parse_xlsx_questionnaire_sheets_preview(file_bytes)
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
+        default_idx = sheets_data["default_sheet_index"]
+        preview = sheets_data["sheets"][default_idx]
         db.add(UploadSession(
             id=temp_id,
             expires_at=_expires,
@@ -274,6 +276,8 @@ async def api_questionnaire_upload_preview(
             "filename": filename,
             "file_type": "xlsx",
             "preview": preview,
+            "sheets": sheets_data["sheets"],
+            "default_sheet_index": default_idx,
             "suggested_template": {"question_col": suggested.question_col, "answer_col": suggested.answer_col} if suggested else None,
         }
 
@@ -324,7 +328,9 @@ def api_questionnaire_upload_finalize(
     question_col: int = Form(...),
     answer_col: str = Form(""),
     evidence_col: str = Form(""),
-    current_user: User = Depends(get_current_user),
+    sheet_index: int = Form(0),
+    due_date: str = Form(""),
+    current_user: User = Depends(require_email_verified),
     db: Session = Depends(get_db),
 ):
     from datetime import datetime, timezone
@@ -341,15 +347,29 @@ def api_questionnaire_upload_finalize(
             return JSONResponse({"error": "No questions found. Please upload again."}, status_code=400)
         parsed_questions = [{"row_index": i, "question": q, "existing_answer": None} for i, q in enumerate(raw_questions)]
         ans_col = ev_col = None
+        source_sheet_name = None
     else:
         ans_col = int(answer_col) if answer_col.strip() else None
         ev_col = int(evidence_col) if evidence_col.strip() else None
         try:
-            parsed_questions = parse_xlsx_questionnaire_full(meta.file_bytes, question_col, ans_col)
+            parsed_questions = parse_xlsx_questionnaire_full(
+                meta.file_bytes, question_col, ans_col, sheet_index=sheet_index
+            )
+            sheet_preview = parse_xlsx_questionnaire_preview(meta.file_bytes, sheet_index=sheet_index)
+            source_sheet_name = sheet_preview.get("sheet_name")
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         if not parsed_questions:
             return JSONResponse({"error": "No questions found in the selected column."}, status_code=400)
+
+    parsed_due_date = None
+    if due_date.strip():
+        try:
+            parsed_due_date = datetime.fromisoformat(due_date.strip().replace("Z", "+00:00"))
+            if parsed_due_date.tzinfo is None:
+                parsed_due_date = parsed_due_date.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return JSONResponse({"error": "Invalid due_date — use ISO format (YYYY-MM-DD)."}, status_code=400)
 
     from app.services import storage as file_storage
     import uuid
@@ -367,6 +387,7 @@ def api_questionnaire_upload_finalize(
         name=meta.name,
         customer_name=meta.customer_name,
         source_filename=meta.filename,
+        source_sheet_name=source_sheet_name if meta.file_type == "xlsx" else None,
         status=QuestionnaireStatus.draft,
         question_count=len(parsed_questions),
         raw_xlsx_blob=store_blob,
@@ -374,6 +395,7 @@ def api_questionnaire_upload_finalize(
         answer_col_index=ans_col,
         secondary_answer_col_index=ev_col,
         question_col_index=question_col,
+        due_date=parsed_due_date,
         workspace_id=current_user.workspace_id,
     )
     db.add(questionnaire)
@@ -399,7 +421,7 @@ def api_questionnaire_upload_finalize(
 @router.post("/knowledge/upload")
 async def api_knowledge_upload(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_email_verified),
     db: Session = Depends(get_db),
 ):
     file_bytes = await file.read()
@@ -547,19 +569,13 @@ async def api_knowledge_replace(
     if not h_chunks:
         return JSONResponse({"error": "File contains no meaningful text."}, status_code=400)
 
-    # Mark approved answers that cited chunks from this document as stale
     old_chunk_ids = [
         r[0] for r in db.query(KnowledgeChunk.id)
         .filter(KnowledgeChunk.document_id == doc_id).all()
     ]
-    if old_chunk_ids:
-        stale_answers = db.query(ApprovedAnswer).filter(
-            ApprovedAnswer.workspace_id == current_user.workspace_id,
-            ApprovedAnswer.status == "active",
-        ).all()
-        for a in stale_answers:
-            if a.cited_chunk_ids and any(cid in old_chunk_ids for cid in a.cited_chunk_ids):
-                a.is_stale = True
+    stale_marked = mark_answers_stale_for_chunk_ids(
+        db, current_user.workspace_id, old_chunk_ids
+    )
 
     # Drop old chunks (CASCADE removes ChunkFeedback automatically)
     db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).delete(synchronize_session=False)
@@ -602,9 +618,16 @@ async def api_knowledge_replace(
 
     log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="document.replaced", resource_type="document", resource_id=doc_id,
-              detail={"filename": filename, "chunk_count": leaf_count})
+              detail={"filename": filename, "chunk_count": leaf_count, "stale_answers_marked": stale_marked})
     db.commit()
-    return {"id": doc.id, "filename": doc.filename, "file_type": doc.file_type.value, "chunk_count": doc.chunk_count}
+    return {
+        "id": doc.id,
+        "filename": doc.filename,
+        "file_type": doc.file_type.value,
+        "chunk_count": doc.chunk_count,
+        "stale_answers_marked": stale_marked,
+        "stale_answer_count": count_stale_answers(db, current_user.workspace_id),
+    }
 
 
 # ── questionnaires ────────────────────────────────────────────────────────────
@@ -696,8 +719,11 @@ def api_get_questionnaire(
     }
 
 
-@router.post("/questionnaires/{questionnaire_id}/generate")
-async def api_generate(
+GENERATION_STALE_HOURS = 2
+
+
+@router.get("/questionnaires/{questionnaire_id}/generation-status")
+def api_generation_status(
     questionnaire_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -710,85 +736,117 @@ async def api_generate(
     if not qs:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
-    pending = (
+    pending_count = (
         db.query(Question)
-        .filter(Question.questionnaire_id == questionnaire_id, Question.status == QuestionStatus.pending)
-        .order_by(Question.row_index)
-        .all()
+        .filter(
+            Question.questionnaire_id == questionnaire_id,
+            Question.status == QuestionStatus.pending,
+        )
+        .count()
     )
-    updated = 0
-    conflict_count = 0
-    for q in pending:
-        try:
-            chunks = await retrieve_relevant_chunks(q.question_text, db, workspace_id=current_user.workspace_id, customer_name=qs.customer_name)
-            result = await generate_answer(q.question_text, chunks)
-            q.draft_answer = result.answer
-            q.short_answer = result.short_answer
-            q.confidence = ConfidenceLevel(result.confidence)
-            q.cited_chunk_ids = result.cited_chunk_ids
-            q.reasoning = result.reasoning
-            q.status = QuestionStatus.generated
-            if not q.category:
-                q.category = await classify_category(q.question_text)
-            _save_citation_scores(db, q.id, chunks, result.cited_chunk_ids)
-            log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
-                      action="answer.generated", resource_type="question", resource_id=q.id,
-                      detail={"questionnaire_id": questionnaire_id, "confidence": result.confidence})
-            db.commit()
-            updated += 1
-        except Exception as exc:
-            db.rollback()
-            print(f"[generate] Failed on question {q.id}: {exc}")
-            await asyncio.sleep(6)
-            continue
+    total = qs.question_count or 0
+    done = max(0, total - pending_count)
 
-        # Conflict check runs in its own transaction after the answer is safely committed
+    return {
+        "generation_status": qs.generation_status or GenerationStatus.idle.value,
+        "generation_error": qs.generation_error,
+        "generation_done_count": qs.generation_done_count or 0,
+        "pending_count": pending_count,
+        "total_count": total,
+        "progress_pct": round((done / total) * 100) if total else 0,
+        "generation_started_at": qs.generation_started_at.isoformat() if qs.generation_started_at else None,
+    }
+
+
+class DueDateBody(BaseModel):
+    due_date: str | None = None  # ISO date or datetime; null clears
+
+
+@router.patch("/questionnaires/{questionnaire_id}/due-date")
+def api_update_due_date(
+    questionnaire_id: int,
+    body: DueDateBody,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    qs = db.query(Questionnaire).filter(
+        Questionnaire.id == questionnaire_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
+        Questionnaire.deleted_at == None,
+    ).first()
+    if not qs:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    if body.due_date is None or not str(body.due_date).strip():
+        qs.due_date = None
+        qs.due_reminder_sent_at = None
+    else:
         try:
-            warning = await check_answer_conflict(
-                q.question_text, result.short_answer or "", db, current_user.workspace_id
+            parsed = datetime.fromisoformat(str(body.due_date).strip().replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            qs.due_date = parsed
+            qs.due_reminder_sent_at = None
+        except ValueError:
+            return JSONResponse({"error": "Invalid due_date — use ISO format."}, status_code=400)
+
+    db.commit()
+    db.refresh(qs)
+    return _qs_json(qs)
+
+
+@router.post("/questionnaires/{questionnaire_id}/generate")
+async def api_generate(
+    questionnaire_id: int,
+    current_user: User = Depends(require_email_verified),
+    db: Session = Depends(get_db),
+):
+    from app.services.generation_workflow import run_questionnaire_generation
+
+    qs = db.query(Questionnaire).filter(
+        Questionnaire.id == questionnaire_id,
+        Questionnaire.workspace_id == current_user.workspace_id,
+        Questionnaire.deleted_at == None,
+    ).first()
+    if not qs:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    if qs.generation_status == GenerationStatus.running.value:
+        started = qs.generation_started_at
+        if started and (datetime.now(timezone.utc) - started) < timedelta(hours=GENERATION_STALE_HOURS):
+            return JSONResponse(
+                {"error": "Generation already in progress.", "status": "running"},
+                status_code=409,
             )
-            if warning:
-                q.conflict_warning = warning
-                conflict_count += 1
-                db.commit()
-        except Exception:
-            db.rollback()
-        await asyncio.sleep(6)  # 6s gap = ~10 req/min, within free tier limit
 
-    if qs.status == QuestionnaireStatus.draft:
-        qs.status = QuestionnaireStatus.in_progress
+    pending_count = (
+        db.query(Question)
+        .filter(
+            Question.questionnaire_id == questionnaire_id,
+            Question.status == QuestionStatus.pending,
+        )
+        .count()
+    )
+    if not pending_count:
+        return {"status": "ok", "updated": 0, "pending": 0}
 
-    # In-app notification for the user who triggered generation
-    db.add(Notification(
-        workspace_id=current_user.workspace_id,
-        user_id=current_user.id,
-        type="generation_complete",
-        title=f"Drafts ready — {qs.name}",
-        body=f"{updated} answer{'s' if updated != 1 else ''} drafted."
-             + (f" {conflict_count} conflict{'s' if conflict_count != 1 else ''} flagged." if conflict_count else ""),
-        resource_type="questionnaire",
-        resource_id=questionnaire_id,
-    ))
+    qs.generation_status = GenerationStatus.running.value
+    qs.generation_started_at = datetime.now(timezone.utc)
+    qs.generation_error = None
+    qs.generation_done_count = 0
     db.commit()
 
-    # Email notification (best-effort)
-    try:
-        from app.services.email import send_generation_complete
-        from app.config import get_settings
-        settings = get_settings()
-        url = f"{settings.app_url}/questionnaires/{questionnaire_id}"
-        send_generation_complete(
-            to_email=current_user.email,
-            user_name=current_user.full_name or "",
-            questionnaire_name=qs.name,
-            total=updated,
-            conflicts=conflict_count,
-            questionnaire_url=url,
-        )
-    except Exception:
-        pass
+    job_queue.enqueue(
+        "generate_questionnaire",
+        {"questionnaire_id": questionnaire_id, "user_id": current_user.id},
+    )
+    asyncio.create_task(run_questionnaire_generation(questionnaire_id, current_user.id))
 
-    return {"updated": updated, "status": "ok"}
+    return {
+        "status": "queued",
+        "questionnaire_id": questionnaire_id,
+        "pending": pending_count,
+    }
 
 
 @router.post("/questionnaires/{questionnaire_id}/questions/{question_id}/regenerate")
@@ -824,7 +882,7 @@ async def api_regenerate_question(
     if not q.category:
         q.category = await classify_category(q.question_text)
 
-    score_map = _save_citation_scores(db, q.id, chunks, result.cited_chunk_ids)
+    score_map = save_citation_scores(db, q.id, chunks, result.cited_chunk_ids)
     # Negative feedback: reviewer asked for a regen — previous chunks were insufficient
     record_negative_feedback(q.cited_chunk_ids or [], current_user.workspace_id, db)
     log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
@@ -1311,13 +1369,21 @@ def api_get_chunk(
         return JSONResponse({"error": "Not found"}, status_code=404)
     if chunk.document and chunk.document.workspace_id != current_user.workspace_id:
         return JSONResponse({"error": "Not found"}, status_code=404)
+    doc = chunk.document
+    updated = doc.content_updated_at if doc else None
+    created = doc.created_at if doc else None
+    meta = review_meta(updated, created) if doc else None
     return {
         "id": chunk.id,
         "text": chunk.text,
         "source_document": chunk.source_document,
         "source_section": chunk.source_section,
         "source_type": chunk.source_type.value,
-        "document_uploaded_at": chunk.document.created_at.isoformat() if chunk.document else None,
+        "document_id": doc.id if doc else None,
+        "document_uploaded_at": created.isoformat() if created else None,
+        "content_updated_at": (updated or created).isoformat() if (updated or created) else None,
+        "review_level": meta["level"] if meta else None,
+        "review_message": meta["message"] if meta else None,
     }
 
 
@@ -1338,23 +1404,62 @@ def api_list_knowledge(
     )
     total = base.count()
     docs = base.order_by(Document.created_at.desc()).offset(offset).limit(per_page).all()
-    items = [
-        {
+    items = []
+    for d in docs:
+        meta = review_meta(d.content_updated_at, d.created_at)
+        items.append({
             "id": d.id,
             "filename": d.filename,
             "file_type": d.file_type.value,
             "chunk_count": d.chunk_count,
             "created_at": d.created_at.isoformat(),
             "content_updated_at": d.content_updated_at.isoformat() if d.content_updated_at else d.created_at.isoformat(),
-        }
-        for d in docs
-    ]
+            "review_level": meta["level"] if meta else None,
+            "review_message": meta["message"] if meta else None,
+        })
     return {
         "items": items,
         "total": total,
         "page": page,
         "per_page": per_page,
         "pages": max(1, -(-total // per_page)),
+        "stale_answer_count": count_stale_answers(db, current_user.workspace_id),
+    }
+
+
+@router.get("/knowledge/freshness-summary")
+def api_knowledge_freshness_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Workspace policy hygiene: calendar review nudges + answers outdated after doc changes."""
+    docs = (
+        db.query(Document)
+        .filter(
+            Document.workspace_id == current_user.workspace_id,
+            Document.deleted_at == None,
+            Document.file_type.in_([FileType.pdf, FileType.docx]),
+        )
+        .order_by(Document.content_updated_at.asc().nullsfirst(), Document.created_at.asc())
+        .all()
+    )
+    needs_review = []
+    for d in docs:
+        meta = review_meta(d.content_updated_at, d.created_at)
+        if meta:
+            needs_review.append({
+                "id": d.id,
+                "filename": d.filename,
+                "content_updated_at": (d.content_updated_at or d.created_at).isoformat(),
+                "review_level": meta["level"],
+                "review_message": meta["message"],
+                "days": meta["days"],
+            })
+    return {
+        "stale_answer_count": count_stale_answers(db, current_user.workspace_id),
+        "documents_needing_review": needs_review,
+        "review_warn_days": 90,
+        "review_urgent_days": 180,
     }
 
 
@@ -1373,26 +1478,24 @@ def api_delete_knowledge(
         return JSONResponse({"error": "Not found"}, status_code=404)
     from datetime import datetime, timezone
 
-    # Mark approved answers that cited chunks from this document as stale
     chunk_ids = [
         r[0] for r in db.query(KnowledgeChunk.id)
         .filter(KnowledgeChunk.document_id == doc_id).all()
     ]
-    if chunk_ids:
-        stale_answers = db.query(ApprovedAnswer).filter(
-            ApprovedAnswer.workspace_id == current_user.workspace_id,
-            ApprovedAnswer.status == "active",
-        ).all()
-        for a in stale_answers:
-            if a.cited_chunk_ids and any(cid in chunk_ids for cid in a.cited_chunk_ids):
-                a.is_stale = True
+    stale_marked = mark_answers_stale_for_chunk_ids(
+        db, current_user.workspace_id, chunk_ids
+    )
 
     doc.deleted_at = datetime.now(timezone.utc)
     log_event(db, workspace_id=current_user.workspace_id, user_id=current_user.id, user_email=current_user.email,
               action="document.deleted", resource_type="document", resource_id=doc_id,
-              detail={"filename": doc.filename})
+              detail={"filename": doc.filename, "stale_answers_marked": stale_marked})
     db.commit()
-    return {"status": "deleted"}
+    return {
+        "status": "deleted",
+        "stale_answers_marked": stale_marked,
+        "stale_answer_count": count_stale_answers(db, current_user.workspace_id),
+    }
 
 
 # ── answer library ────────────────────────────────────────────────────────────
@@ -1401,6 +1504,7 @@ def api_delete_knowledge(
 def api_answer_library(
     q: Optional[str] = "",
     category: Optional[str] = "",
+    stale_only: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1408,6 +1512,8 @@ def api_answer_library(
         ApprovedAnswer.workspace_id == current_user.workspace_id,
         ApprovedAnswer.status == "active",
     )
+    if stale_only:
+        query = query.filter(ApprovedAnswer.is_stale == True)
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -1462,6 +1568,7 @@ def api_answer_library(
         "answers": [_answer_json(a) for a in answers],
         "categories": [{"name": c, "count": n} for c, n in cats],
         "total": db.query(ApprovedAnswer).filter(ApprovedAnswer.workspace_id == current_user.workspace_id, ApprovedAnswer.status == "active").count(),
+        "stale_count": count_stale_answers(db, current_user.workspace_id),
         "total_reuses": db.query(func.sum(ApprovedAnswer.times_reused)).filter(
             ApprovedAnswer.workspace_id == current_user.workspace_id, ApprovedAnswer.status == "active").scalar() or 0,
     }

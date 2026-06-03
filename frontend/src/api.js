@@ -3,20 +3,26 @@
  *  CSRF: reads greenlight_csrf cookie and sends it as X-CSRF-Token header
  *  on every mutating request (double-submit cookie pattern). */
 
+import { messageFromBody, messageFromResponse } from './utils/apiErrors.js'
+
 const BASE = '/api'
 const OPTS = { credentials: 'include' }  // send cookie on every request
 
-function getCsrfToken() {
+export function getCsrfToken() {
   const match = document.cookie.match(/(?:^|;\s*)greenlight_csrf=([^;]*)/)
   return match ? decodeURIComponent(match[1]) : ''
 }
 
-const CSRF_HEADERS = () => ({ 'X-CSRF-Token': getCsrfToken() })
+export function csrfHeaders(extra = {}) {
+  return { 'X-CSRF-Token': getCsrfToken(), ...extra }
+}
+
+const CSRF_HEADERS = () => csrfHeaders()
 
 async function get(path) {
   const res = await fetch(`${BASE}${path}`, OPTS)
   if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized') }
-  if (!res.ok) throw new Error(`GET ${path} → ${res.status}`)
+  if (!res.ok) throw new Error(await messageFromResponse(res, `Request failed (${res.status})`))
   return res.json()
 }
 
@@ -28,7 +34,7 @@ async function post(path, body) {
     body: body ? JSON.stringify(body) : undefined,
   })
   if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized') }
-  if (!res.ok) throw new Error(`POST ${path} → ${res.status}`)
+  if (!res.ok) throw new Error(await messageFromResponse(res, `Request failed (${res.status})`))
   return res.json()
 }
 
@@ -44,6 +50,19 @@ async function patch(path, formData) {
   return res.json()
 }
 
+async function patchJson(path, body) {
+  const res = await fetch(`${BASE}${path}`, {
+    ...OPTS,
+    method: 'PATCH',
+    headers: { ...CSRF_HEADERS(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized') }
+  if (!res.ok) throw new Error(messageFromBody(json, `Request failed (${res.status})`))
+  return json
+}
+
 async function postFormRaw(path, formData) {
   const res = await fetch(`${BASE}${path}`, {
     ...OPTS,
@@ -51,9 +70,9 @@ async function postFormRaw(path, formData) {
     headers: CSRF_HEADERS(),
     body: formData,
   })
-  const json = await res.json()
+  const json = await res.json().catch(() => ({}))
   if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized') }
-  if (!res.ok) throw new Error(json.error || `POST ${path} → ${res.status}`)
+  if (!res.ok) throw new Error(messageFromBody(json, `Request failed (${res.status})`))
   return json
 }
 
@@ -66,6 +85,8 @@ export const api = {
   getClients:           ()              => get('/questionnaires/clients'),
   getQuestionnaire:     (id)            => get(`/questionnaires/${id}`),
   generateAnswers:      (id)            => post(`/questionnaires/${id}/generate`),
+  getGenerationStatus:  (id)            => get(`/questionnaires/${id}/generation-status`),
+  updateDueDate:        (id, dueDate)   => patchJson(`/questionnaires/${id}/due-date`, { due_date: dueDate }),
   approveQuestion:      (qId, qId2, makeGeneric = false) => post(`/questionnaires/${qId}/questions/${qId2}/approve${makeGeneric ? '?make_generic=true' : ''}`),
   rejectQuestion:       (qId, qId2)     => post(`/questionnaires/${qId}/questions/${qId2}/reject`),
   regenerateQuestion:   (qId, qId2)     => post(`/questionnaires/${qId}/questions/${qId2}/regenerate`),
@@ -86,13 +107,14 @@ updateQuestion:       (qId, qId2, answer) =>
 
   // Knowledge base
   getKnowledge:    (page = 1) => get(`/knowledge?page=${page}&per_page=20`),
+  getKnowledgeFreshnessSummary: () => get('/knowledge/freshness-summary'),
   deleteKnowledge: (id)       => post(`/knowledge/${id}/delete`),
   uploadKnowledge: (formData) => postFormRaw('/knowledge/upload', formData),
   replaceKnowledge: (id, formData) => postFormRaw(`/knowledge/${id}/replace`, formData),
 
   // Answer library
-  getAnswerLibrary: (q = '', category = '') =>
-    get(`/answers/library?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}`),
+  getAnswerLibrary: (q = '', category = '', staleOnly = false) =>
+    get(`/answers/library?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}&stale_only=${staleOnly ? 'true' : 'false'}`),
   archiveAnswer: (id) => post(`/answers/library/${id}/archive`, {}),
   markAnswerFresh: (id) => post(`/answers/library/${id}/mark-fresh`, {}),
   makeAnswerGeneric: (id) => post(`/answers/library/${id}/make-generic`, {}),

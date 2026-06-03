@@ -1,22 +1,15 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { Icon } from '../components/Layout'
+import { formatConfirmedDate, reviewBadge } from '../utils/documentFreshness.js'
 
 const FILE_COLOR = {
   pdf:  { text: '#ef4444', bg: 'rgba(239,68,68,0.1)',  border: 'rgba(239,68,68,0.2)'  },
   docx: { text: '#3b82f6', bg: 'rgba(59,130,246,0.1)', border: 'rgba(59,130,246,0.2)' },
   xlsx: { text: '#22c55e', bg: 'rgba(34,197,94,0.1)',  border: 'rgba(34,197,94,0.2)'  },
-}
-
-function staleness(dateStr) {
-  if (!dateStr) return null
-  const days = Math.floor((Date.now() - new Date(dateStr)) / 86_400_000)
-  if (days >= 180) return { label: `${Math.floor(days/30)}mo`, color: '#ef4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)', title: 'Content not updated in 6+ months — consider refreshing this document' }
-  if (days >= 90)  return { label: `${Math.floor(days/30)}mo`, color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)', title: 'Content not updated in 3+ months — verify this document is still current' }
-  return null
 }
 
 export default function KnowledgeBase() {
@@ -26,36 +19,59 @@ export default function KnowledgeBase() {
   const nav = useNavigate()
   const [docs, setDocs] = useState([])
   const [page, setPage] = useState(1)
-  const [meta, setMeta] = useState({ total: 0, pages: 1 })
+  const [meta, setMeta] = useState({ total: 0, pages: 1, stale_answer_count: 0 })
   const [loading, setLoading] = useState(true)
   const [replacing, setReplacing] = useState(null)
+  const [actionNotice, setActionNotice] = useState(null)
 
   const load = (p = page) => {
     setLoading(true)
     api.getKnowledge(p)
       .then(data => {
         setDocs(data.items)
-        setMeta({ total: data.total, pages: data.pages })
+        setMeta({ total: data.total, pages: data.pages, stale_answer_count: data.stale_answer_count ?? 0 })
       })
       .catch(console.error)
       .finally(() => setLoading(false))
   }
   useEffect(() => { load(page) }, [page])
 
+  const showStaleNotice = (res, actionLabel) => {
+    const marked = res.stale_answers_marked ?? 0
+    const total = res.stale_answer_count ?? 0
+    if (marked > 0) {
+      setActionNotice({
+        type: 'stale',
+        marked,
+        total,
+        message: `${actionLabel}: ${marked} approved answer${marked !== 1 ? 's' : ''} in your library may be outdated and need re-review.`,
+      })
+    } else {
+      setActionNotice({ type: 'ok', message: `${actionLabel} completed.` })
+    }
+    setTimeout(() => setActionNotice(null), 12000)
+  }
+
   const handleDelete = async (id, name) => {
-    if (!confirm(`Delete "${name}" and all its chunks?`)) return
-    await api.deleteKnowledge(id)
-    load()
+    if (!confirm(`Delete "${name}" and all its chunks?\n\nApproved answers that cited this policy will be flagged for re-review.`)) return
+    try {
+      const res = await api.deleteKnowledge(id)
+      showStaleNotice(res, 'Document deleted')
+      load()
+    } catch (err) {
+      alert(err?.message || 'Delete failed')
+    }
   }
 
   const handleReplace = async (id, name, file) => {
     if (!file) return
-    if (!confirm(`Replace "${name}" with "${file.name}"?\n\nAll existing chunks and feedback signals for this document will be removed and re-generated.`)) return
+    if (!confirm(`Replace "${name}" with "${file.name}"?\n\nOld chunks are removed and re-embedded. Approved answers that cited this policy will be flagged for re-review.`)) return
     setReplacing(id)
     try {
       const fd = new FormData()
       fd.append('file', file)
-      await api.replaceKnowledge(id, fd)
+      const res = await api.replaceKnowledge(id, fd)
+      showStaleNotice(res, 'Policy replaced')
       load()
     } catch (err) {
       alert(err?.message || 'Replace failed — check file type (PDF or DOCX only)')
@@ -64,15 +80,17 @@ export default function KnowledgeBase() {
     }
   }
 
+  const staleCount = meta.stale_answer_count ?? 0
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-8 max-w-6xl mx-auto">
 
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: t.text }}>Knowledge Base</h1>
             <p className="text-sm mt-0.5" style={{ color: t.text2 }}>
-              Policies and documents that power suggested answers
+              Policies power AI drafts. Replace files when content changes; age badges are reminders to confirm, not auto-expiry.
             </p>
           </div>
           <button onClick={() => nav('/knowledge/upload')}
@@ -82,6 +100,33 @@ export default function KnowledgeBase() {
           </button>
         </div>
 
+        {staleCount > 0 && (
+          <div className="mb-4 px-4 py-3 rounded-xl flex flex-wrap items-center justify-between gap-3"
+               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
+            <p className="text-sm font-medium" style={{ color: '#92400e' }}>
+              {staleCount} approved answer{staleCount !== 1 ? 's' : ''} may be outdated — a source policy was updated or removed.
+            </p>
+            <Link to="/answers/library?stale=1"
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white hover:opacity-90"
+                  style={{ background: '#d97706' }}>
+              Review stale answers →
+            </Link>
+          </div>
+        )}
+
+        {actionNotice && (
+          <div className="mb-4 px-4 py-3 rounded-xl text-sm font-medium flex flex-wrap items-center justify-between gap-2"
+               style={actionNotice.type === 'stale'
+                 ? { background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', color: '#92400e' }
+                 : { background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', color: '#166534' }}>
+            <span>{actionNotice.message}</span>
+            {actionNotice.type === 'stale' && (
+              <Link to="/answers/library?stale=1" className="text-xs font-semibold underline">
+                Open answer library ({actionNotice.total} stale)
+              </Link>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-14 rounded-xl" />)}</div>
@@ -107,15 +152,15 @@ export default function KnowledgeBase() {
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ background: t.tableHead, borderBottom: `1px solid ${t.borderColor}` }}>
-                    {['Document', 'Type', 'Chunks', 'Uploaded', '', ''].map(h => (
+                    {['Document', 'Type', 'Chunks', 'Last confirmed', '', ''].map(h => (
                       <th key={h} className="px-5 py-3 text-left text-xs font-semibold" style={{ color: t.text3 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {docs.map(d => {
-                    const fc    = FILE_COLOR[d.file_type] || FILE_COLOR.pdf
-                    const stale = staleness(d.content_updated_at)
+                    const fc = FILE_COLOR[d.file_type] || FILE_COLOR.pdf
+                    const stale = reviewBadge(d.content_updated_at, d.review_message)
                     return (
                       <tr key={d.id} className="transition-colors"
                           style={{ borderBottom: `1px solid ${t.borderColor}` }}
@@ -127,12 +172,12 @@ export default function KnowledgeBase() {
                                  style={{ background: fc.bg, border: `1px solid ${fc.border}` }}>
                               <Icon name="doc" size={14} color={fc.text} />
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium" style={{ color: t.text }}>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-medium truncate" style={{ color: t.text }}>
                                 {d.filename}
                               </span>
                               {stale && (
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold cursor-default"
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 cursor-default"
                                       title={stale.title}
                                       style={{ background: stale.bg, border: `1px solid ${stale.border}`, color: stale.color }}>
                                   ⚠ {stale.label}
@@ -153,16 +198,16 @@ export default function KnowledgeBase() {
                           </span>
                           <span className="text-xs ml-1" style={{ color: t.text3 }}>chunks</span>
                         </td>
-                        <td className="px-5 py-4 text-xs" style={{ color: t.text3 }}>
-                          {new Date(d.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        <td className="px-5 py-4 text-xs" style={{ color: t.text3 }}
+                            title="Upload or replace date — use Replace when the policy content changes">
+                          {formatConfirmedDate(d.content_updated_at)}
                         </td>
                         <td className="px-5 py-4">
                           {canManage && (
                             <div className="flex items-center justify-end gap-3">
-                              {/* Replace: hidden file input triggered by label */}
                               <label className="cursor-pointer text-xs font-medium transition-colors hover:opacity-70"
                                      style={{ color: t.primary }}
-                                     title="Upload a new version of this document — re-embeds all chunks">
+                                     title="Upload a new version — re-embeds chunks and flags linked library answers for re-review">
                                 {replacing === d.id ? 'Replacing…' : 'Replace'}
                                 <input type="file" accept=".pdf,.docx" className="hidden"
                                        disabled={replacing === d.id}
@@ -180,7 +225,11 @@ export default function KnowledgeBase() {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between mt-3 px-1">
+            <p className="text-xs mt-3 px-1" style={{ color: t.text3 }}>
+              Age badges (3mo / 6mo) mean “confirm still accurate” — they do not stop AI from using the document.
+              When policy text changes, use <strong>Replace</strong> so linked approved answers are flagged automatically.
+            </p>
+            <div className="flex items-center justify-between mt-2 px-1">
               <p className="text-xs" style={{ color: t.text3 }}>
                 {meta.total} document{meta.total !== 1 ? 's' : ''} · {docs.reduce((s, d) => s + d.chunk_count, 0)} chunks this page
               </p>

@@ -8,6 +8,7 @@ import pytest
 from app.services.parsing import (
     parse_xlsx_questionnaire_full,
     parse_xlsx_questionnaire_preview,
+    parse_xlsx_questionnaire_sheets_preview,
 )
 
 
@@ -41,6 +42,22 @@ class TestPreview:
         result = parse_xlsx_questionnaire_preview(_make_xlsx([["Q"]]))
         assert "sheet_name" in result
         assert isinstance(result["sheet_name"], str)
+
+    def test_multi_sheet_preview(self):
+        wb = openpyxl.Workbook()
+        wb.active.title = "SheetA"
+        wb.active.append(["Question"])
+        wb.active.append(["From A?"])
+        wb.create_sheet("SheetB")
+        wb["SheetB"].append(["Question"])
+        wb["SheetB"].append(["From B?"])
+        buf = io.BytesIO()
+        wb.save(buf)
+        data = parse_xlsx_questionnaire_sheets_preview(buf.getvalue())
+        assert len(data["sheets"]) == 2
+        assert data["sheets"][1]["total_rows"] == 1
+        full = parse_xlsx_questionnaire_full(buf.getvalue(), 0, None, sheet_index=1)
+        assert full[0]["question"] == "From B?"
 
     def test_sample_capped_at_five(self):
         data = [["Q", "A"]] + [[f"Q{i}", ""] for i in range(10)]

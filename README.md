@@ -62,9 +62,9 @@ app/
   db.py              SQLAlchemy engine + session
   models.py          ORM models: KnowledgeChunk, Questionnaire, Question
   routes/
-    knowledge.py     Upload policies / past answers  (Phase 2)
-    questionnaires.py Upload + list questionnaires   (Phase 3)
-    answers.py       Generate, review, export        (Phases 4–5)
+    auth.py          Register, login, JWT cookies
+    api.py           JSON API for React frontend (questionnaires, knowledge, export, …)
+    admin.py         Internal admin endpoints
   services/
     parsing.py       PDF / DOCX / XLSX parsers       (Phase 2)
     embeddings.py    Embedding generation             (Phase 2)
@@ -81,11 +81,20 @@ migrations/          Alembic migration scripts
 pytest
 ```
 
-## Build phases
+## Product features (current)
+
+- Multi-sheet Excel upload with column mapping
+- Background AI answer generation with progress polling
+- Optional questionnaire due dates and email reminders
+- Email verification required for upload / generate (skipped when `TESTING=true`)
+- Answer library, knowledge base (RAG), audit log, trash with 90-day auto-purge
+- Consultant vs company workspace modes
+
+## Build phases (historical)
 
 | Phase | Feature |
 |-------|---------|
-| 1 | Project scaffold (this) |
+| 1 | Project scaffold |
 | 2 | Knowledge base ingestion |
 | 3 | Questionnaire upload + parsing |
 | 4 | AI answer generation |

@@ -59,7 +59,7 @@ _CSRF_EXEMPT_PATHS = {
 
 @app.middleware("http")
 async def enforce_csrf(request: Request, call_next):
-    if _settings.testing:
+    if get_settings().testing:
         return await call_next(request)
     path = request.url.path
     is_exempt = path in _CSRF_EXEMPT_PATHS or path.startswith("/api/invite/")

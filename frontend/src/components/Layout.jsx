@@ -348,7 +348,7 @@ function EmailVerificationBanner() {
   return (
     <div className="flex-shrink-0 flex items-center justify-between gap-4 px-5 py-2.5 text-xs font-medium"
          style={{ background: 'rgba(245,158,11,0.1)', borderBottom: '1px solid rgba(245,158,11,0.25)', color: '#92400e' }}>
-      <span>Please verify your email address to secure your account.</span>
+      <span>Verify your email to upload questionnaires, add policies, and generate answers.</span>
       {sent ? (
         <span style={{ color: '#16a34a' }}>Verification email sent — check your inbox.</span>
       ) : (

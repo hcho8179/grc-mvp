@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useTheme } from '../context/ThemeContext'
 import { Icon } from '../components/Layout'
@@ -40,11 +40,15 @@ export default function KBHealth() {
   const { t } = useTheme()
   const nav = useNavigate()
   const [data, setData] = useState(null)
+  const [freshness, setFreshness] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.getKBHealth()
-      .then(d => { setData(d); setLoading(false) })
+    Promise.all([
+      api.getKBHealth(),
+      api.getKnowledgeFreshnessSummary().catch(() => null),
+    ])
+      .then(([kb, fr]) => { setData(kb); setFreshness(fr); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
 
@@ -91,6 +95,32 @@ export default function KBHealth() {
         </div>
       ) : (
         <>
+          {freshness && (freshness.stale_answer_count > 0 || freshness.documents_needing_review?.length > 0) && (
+            <div className="rounded-xl p-4 mb-6 space-y-3"
+                 style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)' }}>
+              <p className="text-sm font-semibold" style={{ color: '#92400e' }}>Policy hygiene</p>
+              {freshness.stale_answer_count > 0 && (
+                <p className="text-xs" style={{ color: '#b45309' }}>
+                  {freshness.stale_answer_count} approved answer{freshness.stale_answer_count !== 1 ? 's' : ''} need re-review after a policy change.{' '}
+                  <Link to="/answers/library?stale=1" className="font-semibold underline">Review stale answers</Link>
+                </p>
+              )}
+              {freshness.documents_needing_review?.length > 0 && (
+                <div className="text-xs space-y-1" style={{ color: '#b45309' }}>
+                  <p className="font-medium">Confirm these policies are still current (upload/replace resets the clock):</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    {freshness.documents_needing_review.slice(0, 5).map(d => (
+                      <li key={d.id}>{d.filename} — {d.review_message}</li>
+                    ))}
+                  </ul>
+                  {freshness.documents_needing_review.length > 5 && (
+                    <Link to="/knowledge" className="font-semibold underline">View all in Knowledge Base</Link>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Overall score card */}
           <div className="rounded-2xl p-6 mb-6 flex items-center gap-8"
                style={{ ...t.card }}>

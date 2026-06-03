@@ -88,3 +88,17 @@ def get_current_user(
             detail="User not found",
         )
     return user
+
+
+def require_email_verified(
+    user: User = Depends(get_current_user),
+) -> User:
+    """Block mutating product actions until the user verifies their email."""
+    if get_settings().testing:
+        return user
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email before using this feature.",
+        )
+    return user

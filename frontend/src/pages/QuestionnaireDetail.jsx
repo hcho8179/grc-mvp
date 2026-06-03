@@ -4,7 +4,13 @@ import { api } from '../api'
 import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
 import { Icon } from '../components/Layout'
-import { StatusBadge, ConfidenceBadge } from '../components/StatusBadge'
+import { StatusBadge, ConfidenceBadge, GenerationBadge } from '../components/StatusBadge'
+import {
+  dueDateInputFromIso,
+  dueDateUrgency,
+  formatDueDate,
+  isoDueDateFromInput,
+} from '../utils/questionnaireMeta.js'
 
 // Returns true if the answer text contains no client-specific signals.
 // Used to auto-detect whether an answer can be promoted to generic.
@@ -97,16 +103,14 @@ function SourcesPanel({ citedChunks, t }) {
         {!loading && ids.map(id => {
           const c = chunks[id]
           const score = scoreMap[id]
-          const uploadedAt = c?.document_uploaded_at ? new Date(c.document_uploaded_at) : null
-          const monthsOld = uploadedAt ? Math.floor((Date.now() - uploadedAt) / (1000 * 60 * 60 * 24 * 30)) : null
-          const isStale = monthsOld !== null && monthsOld >= 12
-          const dateLabel = uploadedAt
-            ? uploadedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+          const reviewWarn = c?.review_level === 'warn' || c?.review_level === 'urgent'
+          const dateLabel = c?.content_updated_at
+            ? new Date(c.content_updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
             : null
           return (
             <div key={id} className="rounded-lg p-3"
                  style={{ background: t.dark ? 'rgba(59,130,246,0.05)' : '#eff6ff',
-                          border: `1px solid ${isStale ? 'rgba(245,158,11,0.4)' : (t.dark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.2)')}` }}>
+                          border: `1px solid ${reviewWarn ? 'rgba(245,158,11,0.4)' : (t.dark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.2)')}` }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-xs font-semibold truncate" style={{ color: t.primary }}>
                   {c?.source_document || `Source #${id}`}
@@ -119,14 +123,17 @@ function SourcesPanel({ citedChunks, t }) {
                 <div className="ml-auto flex-shrink-0 flex items-center gap-1.5">
                   {dateLabel && (
                     <span className="text-[10px] font-medium flex items-center gap-1"
-                          style={{ color: isStale ? '#b45309' : t.text3 }}
-                          title={isStale ? `Uploaded ${monthsOld} months ago — verify this policy is still current` : `Uploaded ${dateLabel}`}>
-                      {isStale && '⚠ '}Uploaded {dateLabel}
+                          style={{ color: reviewWarn ? '#b45309' : t.text3 }}
+                          title={c?.review_message || `Last confirmed ${dateLabel}`}>
+                      {reviewWarn && '⚠ '}Confirmed {dateLabel}
                     </span>
                   )}
                   <ScoreBadge score={score} />
                 </div>
               </div>
+              {reviewWarn && c?.review_message && (
+                <p className="text-[10px] mb-1.5" style={{ color: '#b45309' }}>{c.review_message}</p>
+              )}
               {c?.text && (
                 <p className="text-xs leading-relaxed italic pl-3"
                    style={{ color: t.text2, borderLeft: `2px solid ${t.primary}40` }}>
@@ -628,8 +635,12 @@ export default function QuestionnaireDetail() {
   const [shareCopied, setShareCopied] = useState(false)
   const [reassigning, setReassigning] = useState(false)
   const [reassignValue, setReassignValue] = useState('')
+  const [dueDateEditing, setDueDateEditing] = useState(false)
+  const [dueDateValue, setDueDateValue] = useState('')
+  const [savingDueDate, setSavingDueDate] = useState(false)
   const [clients, setClients] = useState([])
   const initializedRef = useRef(false)
+  const emailVerified = currentUser?.email_verified !== false
 
   const load = useCallback(() => {
     setLoading(true)
@@ -675,6 +686,25 @@ export default function QuestionnaireDetail() {
     }
   }
 
+  const openDueDateEdit = () => {
+    setDueDateValue(dueDateInputFromIso(qs?.due_date))
+    setDueDateEditing(true)
+  }
+
+  const submitDueDate = async () => {
+    setSavingDueDate(true)
+    try {
+      const iso = isoDueDateFromInput(dueDateValue)
+      const updated = await api.updateDueDate(id, iso)
+      setData(d => ({ ...d, questionnaire: updated }))
+      setDueDateEditing(false)
+      showToast(iso ? 'Due date saved' : 'Due date cleared', 'green')
+    } catch {
+      showToast('Failed to update due date', 'red')
+    }
+    setSavingDueDate(false)
+  }
+
   const flash = (qId, cls) => {
     setAnimMap(p => ({ ...p, [qId]: cls }))
     setTimeout(() => setAnimMap(p => { const n = { ...p }; delete n[qId]; return n }), 600)
@@ -706,45 +736,59 @@ export default function QuestionnaireDetail() {
     } catch { showToast('Failed to flag', 'red') }
   }, [id, advanceNext])
 
+  const pollGeneration = useCallback((startingPending) => {
+    const pollIv = setInterval(async () => {
+      try {
+        const [st, fresh] = await Promise.all([
+          api.getGenerationStatus(id),
+          api.getQuestionnaire(id),
+        ])
+        setData(fresh)
+        if (!initializedRef.current) {
+          const first = fresh.questions.find(q => q.status === 'generated')
+          if (first) { setCurrentId(first.id); initializedRef.current = true }
+        }
+        setGenProgress(st.progress_pct ?? 0)
+        if (st.generation_status === 'complete') {
+          clearInterval(pollIv)
+          setGenerating(false)
+          setGenProgress(100)
+          showToast(`${st.generation_done_count ?? 0} answers drafted`, 'green')
+          initializedRef.current = false
+          setTimeout(() => setGenProgress(0), 800)
+        } else if (st.generation_status === 'failed') {
+          clearInterval(pollIv)
+          setGenerating(false)
+          showToast(st.generation_error || 'Generation failed', 'red')
+        }
+      } catch {}
+    }, 3000)
+    return pollIv
+  }, [id, showToast])
+
   const handleGenerate = async () => {
     const startingPending = questions.filter(q => q.status === 'pending').length
     if (!startingPending) return
     setGenerating(true); setGenProgress(0)
     showToast(`Generating ${startingPending} answers — watch them appear live`, 'blue')
 
-    // Poll every 3s so questions appear as they complete on the backend
-    const pollIv = setInterval(async () => {
-      try {
-        const fresh = await api.getQuestionnaire(id)
-        setData(fresh)
-        // Auto-focus first newly-generated question if nothing is selected yet
-        if (!initializedRef.current) {
-          const first = fresh.questions.find(q => q.status === 'generated')
-          if (first) { setCurrentId(first.id); initializedRef.current = true }
-        }
-        // Real progress: how many pending→generated so far
-        const nowPending = fresh.questions.filter(q => q.status === 'pending').length
-        const done = startingPending - nowPending
-        setGenProgress(Math.min(Math.round((done / startingPending) * 100), 95))
-      } catch {}
-    }, 3000)
-
+    let pollIv
     try {
-      const res = await api.generateAnswers(id)
-      clearInterval(pollIv)
-      // Final reload to catch the last question
-      const final = await api.getQuestionnaire(id)
-      setData(final)
-      setGenProgress(100)
-      showToast(`${res.updated} answers drafted`, 'green')
-      initializedRef.current = false
-    } catch {
-      showToast('Generation failed', 'red')
+      await api.generateAnswers(id)
+      pollIv = pollGeneration(startingPending)
+    } catch (e) {
+      showToast(e.message || 'Generation failed', 'red')
+      setGenerating(false)
     }
-    clearInterval(pollIv)
-    setGenerating(false)
-    setTimeout(() => setGenProgress(0), 800)
   }
+
+  useEffect(() => {
+    if (qs?.generation_status !== 'running' || generating) return undefined
+    setGenerating(true)
+    const pending = questions.filter(q => q.status === 'pending').length
+    const iv = pollGeneration(pending || qs?.question_count || 1)
+    return () => clearInterval(iv)
+  }, [qs?.generation_status, id])
 
   const handleRegenerate = useCallback(async (qId) => {
     try {
@@ -828,6 +872,15 @@ export default function QuestionnaireDetail() {
           <p className="text-sm font-semibold leading-snug" style={{ color: t.text }}>
             {qs?.name}
           </p>
+          {qs?.source_sheet_name && (
+            <p className="text-[11px] mt-0.5" style={{ color: t.text3 }}>
+              Worksheet: {qs.source_sheet_name}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            {qs?.status && <StatusBadge status={qs.status} />}
+            <GenerationBadge status={qs?.generation_status} />
+          </div>
           {qs?.customer_name && !reassigning && (
             <div className="flex items-center gap-1 mt-0.5 group">
               <p className="text-xs" style={{ color: t.text3 }}>{qs.customer_name}</p>
@@ -871,6 +924,88 @@ export default function QuestionnaireDetail() {
               </div>
             </div>
           )}
+
+          {/* Due date */}
+          <div className="mt-2 group">
+            {dueDateEditing ? (
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: t.text3 }}>
+                  Due date
+                </label>
+                <input
+                  type="date"
+                  autoFocus
+                  value={dueDateValue}
+                  onChange={e => setDueDateValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') submitDueDate()
+                    if (e.key === 'Escape') setDueDateEditing(false)
+                  }}
+                  className="text-xs rounded px-2 py-1 w-full"
+                  style={{ background: t.inputBg, color: t.text, border: `1px solid ${t.borderColor}` }}
+                />
+                <div className="flex gap-1">
+                  <button
+                    onClick={submitDueDate}
+                    disabled={savingDueDate}
+                    className="flex-1 text-xs rounded px-2 py-1 font-medium disabled:opacity-50"
+                    style={{ background: t.primary, color: '#fff' }}
+                  >Save</button>
+                  {qs?.due_date && (
+                    <button
+                      onClick={async () => {
+                        setSavingDueDate(true)
+                        try {
+                          const updated = await api.updateDueDate(id, null)
+                          setData(d => ({ ...d, questionnaire: updated }))
+                          setDueDateEditing(false)
+                          showToast('Due date cleared', 'green')
+                        } catch {
+                          showToast('Failed to clear due date', 'red')
+                        }
+                        setSavingDueDate(false)
+                      }}
+                      disabled={savingDueDate}
+                      className="text-xs rounded px-2 py-1 disabled:opacity-50"
+                      style={{ background: t.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', color: t.text2 }}
+                    >Clear</button>
+                  )}
+                  <button
+                    onClick={() => setDueDateEditing(false)}
+                    className="text-xs rounded px-2 py-1"
+                    style={{ background: t.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', color: t.text2 }}
+                  >Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <Icon name="clock" size={12} color={t.text3} />
+                {qs?.due_date ? (
+                  <span
+                    className="text-xs font-medium"
+                    style={{
+                      color: dueDateUrgency(qs.due_date, qs.status) === 'overdue' ? '#ef4444'
+                        : dueDateUrgency(qs.due_date, qs.status) === 'soon' ? '#f59e0b'
+                        : t.text2,
+                    }}
+                  >
+                    Due {formatDueDate(qs.due_date)}
+                    {dueDateUrgency(qs.due_date, qs.status) === 'overdue' && ' · Overdue'}
+                    {dueDateUrgency(qs.due_date, qs.status) === 'soon' && ' · Soon'}
+                  </span>
+                ) : (
+                  <span className="text-xs" style={{ color: t.text3 }}>No due date</span>
+                )}
+                <button
+                  onClick={openDueDateEdit}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity ml-auto"
+                  title="Edit due date"
+                >
+                  <Icon name="edit" size={11} color={t.text3} />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Progress */}
@@ -965,11 +1100,26 @@ export default function QuestionnaireDetail() {
         {/* Actions */}
         <div className="px-3 py-3 space-y-2 flex-shrink-0"
              style={{ borderTop: `1px solid ${t.borderColor}` }}>
-          <button onClick={handleGenerate} disabled={generating}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold
+          {qs?.generation_status === 'failed' && qs.generation_error && (
+            <div className="px-3 py-2 rounded-lg text-[11px] leading-snug"
+                 style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#b91c1c' }}>
+              Generation failed: {qs.generation_error}
+            </div>
+          )}
+          {!emailVerified && (
+            <p className="text-[11px] px-1" style={{ color: '#92400e' }}>
+              Verify your email to generate answers.
+            </p>
+          )}
+          <button
+            onClick={handleGenerate}
+            disabled={generating || qs?.generation_status === 'running'}
+            title={!emailVerified ? 'Verify your email to generate (required in production)' : undefined}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold
                              text-white hover:opacity-90 disabled:opacity-50 transition-all"
-                  style={{ background: t.primary }}>
-            {generating
+            style={{ background: t.primary }}
+          >
+            {generating || qs?.generation_status === 'running'
               ? <><span className="spin inline-block">↻</span> {genProgress < 90 ? `${genProgress}%` : 'Finishing…'}</>
               : <><Icon name="spark" size={13} color="white" /> Draft Answers</>}
           </button>

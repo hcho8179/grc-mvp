@@ -75,11 +75,13 @@ The system processes each document and breaks it into searchable chunks. When a 
 
 Greenlight accepts questionnaires in three formats: **Excel (.xlsx)**, **Word (.docx)**, and **PDF (.pdf)**.
 
-**Excel questionnaires** use a two-step column picker:
-1. **Preview** — the tool shows the first few rows of the file so the reviewer can see what's in each column
-2. **Map columns** — the reviewer clicks to mark which column is the question, which is the Yes/No answer column, and optionally which is the evidence/explanation column
+**Excel questionnaires** use a two-step flow:
+1. **Preview** — first rows of the active sheet; if the file has **multiple worksheets**, the reviewer picks which sheet to import
+2. **Map columns** — mark question column, Yes/No column, and optional evidence column
 
-This works with any Excel layout — no template required. Hidden rows (common in complex enterprise Excel questionnaires) are automatically skipped.
+Optional **due date** can be set at upload (consultant mode: customer name; company mode: customer field hidden).
+
+This works with any Excel layout — no template required. Hidden rows are automatically skipped.
 
 **Word and PDF questionnaires** skip the column picker entirely — the system reads the document, identifies every question, and presents them for confirmation before import. The reviewer sees the full extracted question list and confirms with one click.
 
@@ -89,16 +91,16 @@ In consulting firm mode, the reviewer also enters the customer name (e.g. "Atlas
 
 ### Step 3 — Draft answers
 
-Once the questionnaire is set up, the reviewer clicks "Draft Answers." The system goes through every question and:
+Once the questionnaire is set up, the reviewer clicks **Draft Answers**. Generation runs as a **background job** — the UI returns immediately and polls progress. For each question the system:
 
 1. Searches the knowledge base for the most relevant policy chunks
 2. Searches the answer library for previously approved answers to similar questions
 3. Drafts a full answer (evidence/explanation)
-4. Drafts a short Yes/No/Partial/N-A answer for questionnaires that have a separate column for it
-5. Assigns a confidence score (High / Medium / Low) based on how closely the sources matched the question
-6. Shows which specific policy documents or past answers it drew from
+4. Drafts a short Yes/No/Partial/N-A answer where applicable
+5. Assigns a confidence score (High / Medium / Low)
+6. Shows which policy documents or past answers it drew from, with **last confirmed** dates on sources
 
-This usually takes 1–3 minutes for a small questionnaire and around 20 minutes for a 200-question enterprise questionnaire.
+Typical wall-clock time: 1–3 minutes for a small questionnaire; ~20 minutes for a 200-question enterprise file (plus human review).
 
 ---
 
@@ -173,15 +175,25 @@ From any questionnaire, the reviewer can generate a read-only link and share it 
 Every time a draft answer is edited or approved, the previous version is automatically saved. Reviewers can open the version history on any question to see exactly what changed, when, and who made the change. Useful for audits, for understanding why an answer was revised, and for recovering a previous version if an edit went the wrong way.
 
 **KB Health**
-A diagnostic page that shows how well the knowledge base is performing — which questions had low-confidence matches, which topics have gaps, and where uploading more documentation would help. Documents not updated in 90+ days show an amber staleness warning, turning red at 180+ days.
+Two layers in one page:
+
+- **Topic coverage** — which categories have weak retrieval, low confidence, or missing sources; suggests which policy docs to upload next
+- **Policy hygiene** — approved answers flagged **stale** after a source policy was replaced or deleted; PDF/DOCX documents not **confirmed** (upload/replace) in 90+ or 180+ days listed for annual review
+
+Age badges are **reminders only** — they do not disable retrieval or generation.
 
 **Answer Library**
-A searchable library of all approved answers across every questionnaire. Shows which client each answer is tagged to, allows promoting a client-specific answer to generic, and displays answers that may be stale if the underlying policy was recently updated.
+Searchable library of all approved answers. Shows client tag (generic vs client-specific), supports promote-to-generic, and surfaces **stale** entries when underlying policy content changed.
 
-Archiving an answer from the library also removes it from the retrieval index — it will not surface in future answer generation. Rejecting a previously approved answer does the same: both the library entry and the retrieval chunk are cleaned up automatically, so bad answers never persist in the system.
+Workflow when a policy updates:
+1. Admin uses **Replace** on the Knowledge Base document (preserves document ID and audit trail)
+2. System re-embeds chunks and flags linked library answers as stale
+3. Reviewer opens Answer Library (`stale only` filter) and re-approves or marks fresh after verification
+
+Archiving or rejecting an answer removes it from the retrieval index so bad answers do not persist.
 
 **Trash and restore**
-Deleted questionnaires and documents go to a trash bin rather than being permanently removed. Owners and admins can restore them. Nothing is lost by accident.
+Deleted questionnaires and documents go to a trash bin. Owners and admins can restore them. Items in trash are **automatically purged after 90 days** via a daily maintenance job.
 
 **Audit log**
 Every action is logged — who uploaded what, who approved which answer, who exported, and when. Full trail for compliance purposes.
@@ -190,7 +202,7 @@ Every action is logged — who uploaded what, who approved which answer, who exp
 Overview of all questionnaires, total questions answered, approval rate, average confidence score, and estimated time saved.
 
 **Team management**
-Owners can invite team members by email. Three roles:
+Owners and admins invite members via **single-use links** from the Team page (48-hour expiry, revocable before use). Three roles:
 - **Owner** — full access, can manage billing and team
 - **Admin** — can manage questionnaires, knowledge base, and team members
 - **Member** — can review and approve answers on questionnaires
@@ -272,7 +284,7 @@ Since this is a security product, I want to be transparent about how the tool it
 - For consulting firms managing multiple clients: all clients share one workspace but are isolated by client name at the answer retrieval level. The system filters approved answers at the database query level so that only generic answers and the current client's answers are ever retrieved — other clients' answers are structurally invisible, not just hidden in the UI
 - Soft deletes only — data is never permanently destroyed without explicit action
 - **Questionnaire re-assignment** — if a questionnaire is accidentally tagged to the wrong client, owners and admins can reassign it in one step. The system updates the questionnaire, all its approved answers, and the corresponding retrieval index in a single operation — logged in the audit trail and effective immediately
-- **Live document replacement with staleness tracking** — when a policy changes, admins can replace the file in-place rather than deleting and re-uploading. The system drops all old chunks, re-parses and re-embeds the new content immediately, and preserves the document's ID so the audit trail remains intact
+- **Live document replacement with answer staleness** — when a policy changes, admins **Replace** the file in-place (do not delete and re-upload). Old chunks are dropped, new content re-embedded, `content_updated_at` resets, and any approved answers that cited the old chunks are flagged **stale** in the Answer Library for re-review. Calendar reminders at 90/180 days since last confirm are shown on Knowledge Base and in review sources — they do not block AI
 
 **Answer safety**
 - **Negation / trap-question detection** — security questionnaires sometimes use reverse-phrasing to catch dishonest vendors (e.g. "Are there any employees exempt from background checks?"). The system is explicitly instructed to detect this pattern and verify that its Yes/No answer reflects the company's secure, compliant posture — not accidentally admit a gap through a keyword match
@@ -305,18 +317,16 @@ The engine that finds the right policy content for each question uses a multi-la
 - The invite token is never stored in the database — only its hash — so a database leak does not expose usable links
 
 **Current limitations**
-- **Single active sheet only** — the questionnaire uploader reads the first (active) sheet of an Excel file. Questionnaires spread across multiple tabs are not yet supported (on the roadmap)
-- **One questionnaire generates at a time** — for a solo consultant this is invisible, but if multiple team members trigger generation simultaneously within the same workspace, jobs queue up rather than running in parallel. This is on the roadmap to fix
-- **No deadline or SLA tracking** — questionnaires have no due date field. There is no built-in reminder if a questionnaire has been sitting in draft for too long
+- **One generation job per questionnaire** — different questionnaires can generate in parallel; the same questionnaire cannot start a second run until the current job finishes (or stale after 2 hours)
+- **Background generation** — `POST /generate` returns immediately; the worker must be running (same app process today)
+- **Email verification** — upload, knowledge upload, and bulk generate require a verified email
 - **No compliance framework mapping** — questions cannot yet be tagged to specific controls (e.g. ISO 27001 Annex A, Essential Eight maturity levels). Mapping is manual
 
 **Coming soon**
 - MFA (authenticator app / TOTP) — opt-in per user, with org-level enforcement for admins
-- Data retention / purge job — soft-deleted items auto-permanently removed after 90 days
 - SSO / SAML — single sign-on via Google Workspace, Okta, Azure AD
-- Multi-sheet Excel support — questionnaires that span multiple tabs in the same file
 - @mention and notifications — tag a team member directly in a comment to notify them by email; useful for routing technical questions to the right person without leaving the platform
-- Question assignment — assign individual questions to specific team members; members see their queue in a dedicated My Assignments view
+- Question assignment — assign individual questions to specific team members (removed in v1; may return)
 - Web portal integrations — OneTrust, Vanta, Whistic
 - Australian data sovereignty — all customer data stored exclusively on AWS Sydney region (ap-southeast-2), meeting Australian privacy and data residency requirements out of the box
 - Cloud document sync — connect Google Drive or SharePoint so Greenlight automatically detects when a source policy file is updated and prompts the team to re-embed it

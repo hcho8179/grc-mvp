@@ -51,7 +51,7 @@ uv pip install -e ".[dev]"
 
 Every resource (documents, questionnaires, answers) belongs to a `Workspace` (tenant). Users belong to one workspace. Roles: `owner` | `admin` | `member`. All DB queries must filter by `workspace_id` — never return cross-workspace data.
 
-`Workspace.workspace_type` is either `"consultant"` or `"direct"`, distinguishing GRC consultants managing multiple clients from companies managing their own compliance.
+`Workspace.workspace_type` is either `"consultant"` or `"company"`, distinguishing GRC consultants managing multiple clients from companies managing their own compliance.
 
 ### RAG pipeline
 

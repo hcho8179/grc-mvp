@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth import COOKIE_NAME, create_access_token, get_current_user, hash_password, verify_password, needs_rehash
+from app.config import get_settings
 from app.db import get_db
 from app.models import Invite, Workspace, User
 from app.services.audit import log_event

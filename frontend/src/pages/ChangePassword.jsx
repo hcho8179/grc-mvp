@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { Icon } from '../components/Layout'
+import { csrfHeaders } from '../api'
 
 function PasswordStrength({ password }) {
   const checks = [
@@ -45,7 +46,7 @@ export default function ChangePassword() {
       const res = await fetch('/api/auth/change-password', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: csrfHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ current_password: form.current, new_password: form.next }),
       })
       const data = await res.json()

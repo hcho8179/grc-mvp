@@ -139,7 +139,9 @@ class TestParseXLSXPreview:
 
     def test_empty_sheet(self):
         result = parse_xlsx_preview(_make_xlsx_bytes([]))
-        assert result == {"columns": [], "sample_rows": [], "total_rows": 0}
+        assert result["columns"] == []
+        assert result["sample_rows"] == []
+        assert result["total_rows"] == 0
 
     def test_none_header_cell_gets_placeholder(self):
         data = [["Question", None, "Notes"], ["q1", "a1", "n1"]]

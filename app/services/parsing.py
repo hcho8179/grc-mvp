@@ -38,79 +38,14 @@ def parse_docx(file_bytes: bytes) -> str:
     return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
 
 
-def parse_xlsx_preview(file_bytes: bytes) -> dict:
-    """Return column headers, sample rows, and total row count for the column-picker UI."""
-    import openpyxl
+def _xlsx_hidden_rows(ws) -> set[int]:
+    return {r for r, rd in ws.row_dimensions.items() if rd.hidden}
 
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
-    except Exception as exc:
-        raise ValueError(f"Could not read XLSX: {exc}") from exc
 
-    ws = wb.active
+def _preview_worksheet(ws) -> dict:
+    hidden_rows = _xlsx_hidden_rows(ws)
     rows = list(ws.iter_rows(values_only=True))
-    wb.close()
-
-    if not rows:
-        return {"columns": [], "sample_rows": [], "total_rows": 0}
-
-    columns = [
-        str(cell) if cell is not None else f"Column {i + 1}"
-        for i, cell in enumerate(rows[0])
-    ]
-    data_rows = rows[1:]
-    sample = [
-        [str(cell) if cell is not None else "" for cell in row]
-        for row in data_rows[:5]
-    ]
-    return {"columns": columns, "sample_rows": sample, "total_rows": len(data_rows)}
-
-
-def parse_xlsx_qa(file_bytes: bytes, question_col: int, answer_col: int) -> list[dict]:
-    """Parse an XLSX file into Q&A pairs using the given 0-based column indices."""
-    import openpyxl
-
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
-    except Exception as exc:
-        raise ValueError(f"Could not read XLSX: {exc}") from exc
-
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    wb.close()
-
-    if not rows:
-        return []
-
-    required_cols = max(question_col, answer_col)
-    pairs: list[dict] = []
-    for row in rows[1:]:  # skip header
-        if len(row) <= required_cols:
-            continue
-        question = str(row[question_col]).strip() if row[question_col] is not None else ""
-        answer = str(row[answer_col]).strip() if row[answer_col] is not None else ""
-        if question:
-            pairs.append({"question": question, "answer": answer})
-
-    return pairs
-
-
-def parse_xlsx_questionnaire_preview(file_bytes: bytes) -> dict:
-    """Return column headers, sample rows, total row count, and sheet name for the questionnaire column-picker."""
-    import openpyxl
-
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-    except Exception as exc:
-        raise ValueError(f"Could not read XLSX: {exc}") from exc
-
-    ws = wb.active
     sheet_name = ws.title
-
-    hidden_rows = {r for r, rd in ws.row_dimensions.items() if rd.hidden}
-
-    rows = list(ws.iter_rows(values_only=True))
-    wb.close()
 
     if not rows:
         return {"columns": [], "sample_rows": [], "total_rows": 0, "sheet_name": sheet_name}
@@ -135,33 +70,90 @@ def parse_xlsx_questionnaire_preview(file_bytes: bytes) -> dict:
     }
 
 
-def parse_xlsx_questionnaire_full(
-    file_bytes: bytes,
-    question_col: int,
-    answer_col: int | None = None,
-) -> list[dict]:
-    """Parse a blank questionnaire XLSX into structured question rows.
-
-    Returns list of {"row_index": int, "question": str, "existing_answer": str | None}.
-    row_index is 0-based relative to the first data row (after header).
-    Rows where the question cell is empty, whitespace, or hidden are skipped.
-    """
+def parse_xlsx_questionnaire_sheets_preview(file_bytes: bytes) -> dict:
+    """Return a preview for every worksheet (multi-tab workbooks)."""
     import openpyxl
 
     try:
-        # Must load without read_only to access row_dimensions (hidden row detection)
         wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     except Exception as exc:
         raise ValueError(f"Could not read XLSX: {exc}") from exc
 
-    ws = wb.active
+    sheets: list[dict] = []
+    for index, name in enumerate(wb.sheetnames):
+        preview = _preview_worksheet(wb[name])
+        preview["index"] = index
+        preview["name"] = name
+        sheets.append(preview)
+    wb.close()
 
-    # Build set of hidden row numbers (1-based)
-    hidden_rows = {
-        r for r, rd in ws.row_dimensions.items()
-        if rd.hidden
-    }
+    if not sheets:
+        raise ValueError("Workbook contains no worksheets.")
 
+    return {"sheets": sheets, "default_sheet_index": 0}
+
+
+def parse_xlsx_questionnaire_preview(file_bytes: bytes, sheet_index: int = 0) -> dict:
+    """Return column headers, sample rows, total row count, and sheet name for one sheet."""
+    data = parse_xlsx_questionnaire_sheets_preview(file_bytes)
+    sheets = data["sheets"]
+    if sheet_index < 0 or sheet_index >= len(sheets):
+        raise ValueError(f"Invalid sheet index {sheet_index}.")
+    return sheets[sheet_index]
+
+
+def parse_xlsx_qa(file_bytes: bytes, question_col: int, answer_col: int, sheet_index: int = 0) -> list[dict]:
+    """Parse an XLSX file into Q&A pairs using the given 0-based column indices."""
+    import openpyxl
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    except Exception as exc:
+        raise ValueError(f"Could not read XLSX: {exc}") from exc
+
+    if sheet_index < 0 or sheet_index >= len(wb.sheetnames):
+        wb.close()
+        raise ValueError(f"Invalid sheet index {sheet_index}.")
+    ws = wb[wb.sheetnames[sheet_index]]
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+
+    if not rows:
+        return []
+
+    required_cols = max(question_col, answer_col)
+    pairs: list[dict] = []
+    for row in rows[1:]:
+        if len(row) <= required_cols:
+            continue
+        question = str(row[question_col]).strip() if row[question_col] is not None else ""
+        answer = str(row[answer_col]).strip() if row[answer_col] is not None else ""
+        if question:
+            pairs.append({"question": question, "answer": answer})
+
+    return pairs
+
+
+def parse_xlsx_questionnaire_full(
+    file_bytes: bytes,
+    question_col: int,
+    answer_col: int | None = None,
+    sheet_index: int = 0,
+) -> list[dict]:
+    """Parse a blank questionnaire XLSX into structured question rows."""
+    import openpyxl
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    except Exception as exc:
+        raise ValueError(f"Could not read XLSX: {exc}") from exc
+
+    if sheet_index < 0 or sheet_index >= len(wb.sheetnames):
+        wb.close()
+        raise ValueError(f"Invalid sheet index {sheet_index}.")
+
+    ws = wb[wb.sheetnames[sheet_index]]
+    hidden_rows = _xlsx_hidden_rows(ws)
     rows = list(ws.iter_rows(values_only=True))
     wb.close()
 
@@ -169,8 +161,8 @@ def parse_xlsx_questionnaire_full(
         return []
 
     results: list[dict] = []
-    for idx, row in enumerate(rows[1:]):  # skip header; idx = 0-based data row index
-        xlsx_row = idx + 2  # 1-based row number in the sheet (header is row 1)
+    for idx, row in enumerate(rows[1:]):
+        xlsx_row = idx + 2
         if xlsx_row in hidden_rows:
             continue
         if len(row) <= question_col:
@@ -187,6 +179,11 @@ def parse_xlsx_questionnaire_full(
         results.append({"row_index": idx, "question": question, "existing_answer": existing_answer})
 
     return results
+
+
+def parse_xlsx_preview(file_bytes: bytes, sheet_index: int = 0) -> dict:
+    """Return column headers, sample rows, and total row count for the column-picker UI."""
+    return parse_xlsx_questionnaire_preview(file_bytes, sheet_index=sheet_index)
 
 
 def parse_file(filename: str, file_bytes: bytes) -> str:

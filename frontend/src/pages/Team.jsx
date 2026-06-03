@@ -30,6 +30,7 @@ export default function Team() {
   const [changing, setChanging] = useState(null)
   const [confirm, setConfirm] = useState(null)
   const [error, setError] = useState('')
+  const [inviteError, setInviteError] = useState('')
 
   // Invite state
   const [invites, setInvites] = useState([])
@@ -67,11 +68,14 @@ export default function Team() {
   const handleGenerate = async () => {
     setGenerating(true)
     setNewLink('')
+    setInviteError('')
     try {
       const res = await api.createInvite()
       setNewLink(res.url)
       loadInvites()
-    } catch {}
+    } catch (e) {
+      setInviteError(e.message || 'Failed to generate invite link')
+    }
     setGenerating(false)
   }
 
@@ -93,7 +97,8 @@ export default function Team() {
     setLoading(true)
     api.getTeam().then(setMembers).catch(console.error).finally(() => setLoading(false))
   }
-  useEffect(() => { load(); loadInvites() }, [])
+  useEffect(() => { load() }, [])
+  useEffect(() => { loadInvites() }, [canInvite])
 
   const handleRoleChange = (member, newRole) => {
     if (newRole === member.role) return
@@ -152,6 +157,13 @@ export default function Team() {
                 {generating ? 'Generating…' : 'Generate invite link'}
               </button>
             </div>
+
+            {inviteError && (
+              <div className="mb-3 px-3 py-2 rounded-lg text-xs font-medium"
+                   style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                {inviteError}
+              </div>
+            )}
 
             {/* Newly generated link */}
             {newLink && (

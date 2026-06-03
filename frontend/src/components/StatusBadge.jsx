@@ -21,6 +21,26 @@ export function StatusBadge({ status }) {
   )
 }
 
+/** Background answer generation (questionnaire.generation_status). */
+export function GenerationBadge({ status }) {
+  const map = {
+    idle:     { dot: '#64748b', text: '#64748b', bg: 'rgba(100,116,139,0.1)', border: 'rgba(100,116,139,0.2)', label: 'Ready' },
+    running:  { dot: '#f59e0b', text: '#d97706', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', label: 'Generating…', pulse: true },
+    complete: { dot: '#22c55e', text: '#16a34a', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.2)', label: 'Drafts ready' },
+    failed:   { dot: '#ef4444', text: '#dc2626', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.25)', label: 'Gen failed' },
+  }
+  if (!status || status === 'idle') return null
+  const c = map[status] || map.idle
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold"
+          style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text }}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.pulse ? 'animate-pulse' : ''}`}
+            style={{ background: c.dot }} />
+      {c.label}
+    </span>
+  )
+}
+
 export function ConfidenceBadge({ confidence }) {
   const map = {
     high:   { dot: '#22c55e', text: '#15803d', bg: 'rgba(34,197,94,0.1)',  border: 'rgba(34,197,94,0.2)',  label: 'High'   },

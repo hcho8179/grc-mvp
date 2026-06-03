@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../api'
+import { api, csrfHeaders } from '../api'
 import { useTheme } from '../context/ThemeContext'
 import { Icon } from '../components/Layout'
 
@@ -39,7 +39,9 @@ export default function UploadKnowledge() {
       // Server returned suggest_replace — parse from raw fetch since api.js throws on !ok
       try {
         const raw = await fetch('/api/knowledge/upload', {
-          method: 'POST', credentials: 'include',
+          method: 'POST',
+          credentials: 'include',
+          headers: csrfHeaders(),
           body: (() => { const fd = new FormData(); fd.append('file', file); return fd })(),
         })
         const json = await raw.json()
@@ -97,7 +99,7 @@ export default function UploadKnowledge() {
             </p>
             <p className="text-xs mb-3" style={{ color: '#b45309' }}>
               <strong>{replacePrompt.existing_filename}</strong> already exists in your knowledge base.
-              Do you want to replace it with the new version? All existing chunks will be re-embedded.
+              Replacing re-embeds all chunks and flags approved answers that cited this policy for re-review.
             </p>
             <div className="flex items-center gap-2">
               <button onClick={handleConfirmReplace}
@@ -188,16 +190,30 @@ export default function UploadKnowledge() {
                  style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)' }}>
               <Icon name="check" size={28} color="#16a34a" />
             </div>
-            <h2 className="text-xl font-bold mb-2" style={{ color: t.text }}>Document Uploaded</h2>
+            <h2 className="text-xl font-bold mb-2" style={{ color: t.text }}>{result.stale_answers_marked != null ? 'Policy Updated' : 'Document Uploaded'}</h2>
             <p className="text-sm" style={{ color: t.text2 }}>
               <strong style={{ color: t.text }}>{result.filename}</strong> processed into{' '}
               <strong style={{ color: t.text }}>{result.chunk_count}</strong> searchable chunks
+              {result.stale_answers_marked > 0 && (
+                <span className="block mt-2" style={{ color: '#b45309' }}>
+                  {result.stale_answers_marked} approved answer{result.stale_answers_marked !== 1 ? 's' : ''} flagged for re-review in the Answer Library.
+                </span>
+              )}
             </p>
-            <button onClick={() => nav('/knowledge')}
-                    className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"
-                    style={{ background: t.primary }}>
-              <Icon name="book" size={14} color="white" /> View Knowledge Base
-            </button>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <button onClick={() => nav('/knowledge')}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"
+                      style={{ background: t.primary }}>
+                <Icon name="book" size={14} color="white" /> View Knowledge Base
+              </button>
+              {result.stale_answers_marked > 0 && (
+                <button onClick={() => nav('/answers/library?stale=1')}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
+                        style={{ background: '#d97706', color: 'white' }}>
+                  Review stale answers
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
