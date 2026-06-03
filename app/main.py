@@ -47,13 +47,23 @@ app.add_exception_handler(RateLimitExceeded, _json_rate_limit_handler)
 
 # CSRF double-submit cookie validation for mutating API requests
 _CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-_CSRF_EXEMPT_PATHS = {"/api/auth/login", "/api/auth/register", "/api/auth/logout"}
+_CSRF_EXEMPT_PATHS = {
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/logout",
+    "/api/auth/request-password-reset",
+    "/api/auth/reset-password",
+    "/api/auth/verify-email",
+    "/api/invite/accept",          # prefix match handled below
+}
 
 @app.middleware("http")
 async def enforce_csrf(request: Request, call_next):
     if _settings.testing:
         return await call_next(request)
-    if request.method not in _CSRF_SAFE_METHODS and request.url.path not in _CSRF_EXEMPT_PATHS:
+    path = request.url.path
+    is_exempt = path in _CSRF_EXEMPT_PATHS or path.startswith("/api/invite/")
+    if request.method not in _CSRF_SAFE_METHODS and not is_exempt:
         cookie_token = request.cookies.get("greenlight_csrf", "")
         header_token = request.headers.get("X-CSRF-Token", "")
         if not cookie_token or not header_token or cookie_token != header_token:
